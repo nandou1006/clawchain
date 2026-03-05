@@ -146,7 +146,7 @@ npm run dev
 
 ### 记忆与调度
 
-- 记忆文件写入与检索（`MEMORY.md` + `memory/*.md`）
+- 记忆文件写入与检索（`MEMORY.md` + `memory/yyyy-mm-dd.md`）
 - Heartbeat 后台巡检与静默 ACK 机制（`HEARTBEAT_OK`）
 - Cron 定时任务与提醒投递
 
