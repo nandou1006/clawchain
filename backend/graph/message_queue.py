@@ -75,14 +75,19 @@ class SessionQueue:
     def set_active_task(self, task: asyncio.Task | None) -> None:
         self._active_task = task
 
-    def abort_active_task(self) -> bool:
+    def abort_active_task(self, user_initiated: bool = True) -> bool:
         task = self._active_task
         if not task:
             return False
         if task.done():
             return False
+        # Store whether this was user-initiated for the task to check
+        self._user_aborted = user_initiated
         task.cancel()
         return True
+
+    def was_user_aborted(self) -> bool:
+        return getattr(self, "_user_aborted", True)
 
 
 class MessageQueueManager:

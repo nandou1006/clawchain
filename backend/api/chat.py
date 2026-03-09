@@ -24,6 +24,7 @@ class ChatAbortRequest(BaseModel):
     session_id: str = ""
     agent_id: str = "main"
     clear_followups: bool = False
+    user_initiated: bool = True
 
 
 def _should_skip_auto_title(message: str) -> bool:
@@ -125,32 +126,35 @@ async def _stream_turn(req: ChatRequest, queue: Any) -> AsyncGenerator[str, None
             data = json.dumps(event, ensure_ascii=False)
             yield f"event: {event_type}\ndata: {data}\n\n"
     except asyncio.CancelledError:
-        # 用户手动停止时，尽量保留本轮输入与已生成的 partial 输出，避免前端重拉后“整轮消失”。
-        try:
-            queue.clear_followups()
-        except Exception:
-            pass
-        try:
-            data = session_manager.load_session(req.session_id, req.agent_id) or {}
-            messages = data.get("messages", []) if isinstance(data, dict) else []
-            has_user = bool(messages and messages[-1].get("role") == "user" and messages[-1].get("content") == req.message)
-            if not has_user:
-                session_manager.save_message(req.session_id, req.agent_id, "user", req.message)
-            if (partial_text or "").strip():
-                session_manager.save_message(
-                    req.session_id,
-                    req.agent_id,
-                    "assistant",
-                    partial_text,
-                )
-        except Exception:
-            pass
+        # Check if this was user-initiated stop or client disconnect
+        was_user_initiated = queue.was_user_aborted()
+        # User-initiated stop: preserve partial output to avoid "whole turn disappearing"
+        if was_user_initiated:
+            try:
+                queue.clear_followups()
+            except Exception:
+                pass
+            try:
+                data = session_manager.load_session(req.session_id, req.agent_id) or {}
+                messages = data.get("messages", []) if isinstance(data, dict) else []
+                has_user = bool(messages and messages[-1].get("role") == "user" and messages[-1].get("content") == req.message)
+                if not has_user:
+                    session_manager.save_message(req.session_id, req.agent_id, "user", req.message)
+                if (partial_text or "").strip():
+                    session_manager.save_message(
+                        req.session_id,
+                        req.agent_id,
+                        "assistant",
+                        partial_text,
+                    )
+            except Exception:
+                pass
         aborted_data = json.dumps({
             "type": "aborted",
             "session_id": req.session_id,
             "run_id": run_id,
             "content": partial_text,
-            "reason": "stopped_by_user",
+            "reason": "stopped_by_user" if was_user_initiated else "client_disconnected",
         }, ensure_ascii=False)
         yield f"event: aborted\ndata: {aborted_data}\n\n"
         return
@@ -230,7 +234,7 @@ async def abort_chat(req: ChatAbortRequest):
 
     session_id = req.session_id or session_manager.resolve_main_session_id(req.agent_id)
     queue = message_queue_manager.get_queue(req.agent_id, session_id)
-    aborted = queue.abort_active_task()
+    aborted = queue.abort_active_task(user_initiated=req.user_initiated)
     cleared = queue.clear_followups() if req.clear_followups else 0
     return {
         "aborted": bool(aborted),

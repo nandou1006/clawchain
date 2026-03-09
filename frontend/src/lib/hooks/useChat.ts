@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import * as api from "../api";
 import type { SSEEvent, TokenUsage } from "../api";
 
@@ -39,8 +39,32 @@ export function useChat(
   setCurrentSessionId: (id: string | null) => void,
   options?: UseChatOptions,
 ) {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [isStreaming, setIsStreaming] = useState(false);
+  // 按 Agent 存储消息状态
+  const [messagesByAgent, setMessagesByAgent] = useState<Map<string, ChatMessage[]>>(new Map());
+  const [isStreamingByAgent, setIsStreamingByAgent] = useState<Map<string, boolean>>(new Map());
+
+  // 当前 Agent 的消息和状态
+  const messages = messagesByAgent.get(currentAgentId) || [];
+  const isStreaming = isStreamingByAgent.get(currentAgentId) || false;
+
+  const setMessages = useCallback((updater: React.SetStateAction<ChatMessage[]>) => {
+    setMessagesByAgent(prev => {
+      const next = new Map(prev);
+      const current = next.get(currentAgentId) || [];
+      const updated = typeof updater === 'function' ? updater(current) : updater;
+      next.set(currentAgentId, updated);
+      return next;
+    });
+  }, [currentAgentId]);
+
+  const setIsStreaming = useCallback((value: boolean) => {
+    setIsStreamingByAgent(prev => {
+      const next = new Map(prev);
+      next.set(currentAgentId, value);
+      return next;
+    });
+  }, [currentAgentId]);
+
   const [lifecycleEvents, setLifecycleEvents] = useState<LifecycleEvent[]>([]);
   const [lastUsage, setLastUsage] = useState<TokenUsage | null>(null);
   const [sessionError, setSessionError] = useState<string | null>(null);
@@ -72,10 +96,19 @@ export function useChat(
         createdAt: now,
         toolCalls: m.tool_calls,
       }));
-      setMessages(msgs);
+      // 使用 agentId 直接设置消息，避免依赖闭包
+      setMessagesByAgent(prev => {
+        const next = new Map(prev);
+        next.set(agentId, msgs);
+        return next;
+      });
       setSessionError(null);
     } catch {
-      setMessages([]);
+      setMessagesByAgent(prev => {
+        const next = new Map(prev);
+        next.set(agentId, []);
+        return next;
+      });
     }
   }, []);
 
@@ -461,7 +494,7 @@ export function useChat(
     const sessionId = currentSessionId;
     if (sessionId) {
       try {
-        await api.abortChat(currentAgentId, sessionId);
+        await api.abortChat(currentAgentId, sessionId, { userInitiated: true });
       } catch {
         // 后端 abort 失败时，降级为前端本地断流。
       }
@@ -483,11 +516,37 @@ export function useChat(
   }, [currentAgentId, currentSessionId]);
 
   const clearChat = useCallback(() => {
-    setMessages([]);
+    setMessagesByAgent(prev => {
+      const next = new Map(prev);
+      next.delete(currentAgentId);
+      return next;
+    });
+    setIsStreamingByAgent(prev => {
+      const next = new Map(prev);
+      next.delete(currentAgentId);
+      return next;
+    });
     setLifecycleEvents([]);
     setLastUsage(null);
     setSessionError(null);
-  }, []);
+  }, [currentAgentId]);
+
+  // 当切换到新 Agent 时，重置 streaming 状态
+  useEffect(() => {
+    // 切换 Agent 时，确保当前 Agent 的 isStreaming 状态正确
+    // 如果之前有过期的 streaming 状态，重置它
+    const currentStreaming = isStreamingByAgent.get(currentAgentId);
+    if (currentStreaming) {
+      // 检查是否有正在运行的请求，如果没有则重置
+      if (!abortRef.current) {
+        setIsStreamingByAgent(prev => {
+          const next = new Map(prev);
+          next.set(currentAgentId, false);
+          return next;
+        });
+      }
+    }
+  }, [currentAgentId]);
 
   return {
     messages,

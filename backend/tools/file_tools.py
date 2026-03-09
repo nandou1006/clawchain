@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import re
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -16,6 +17,25 @@ from sandbox.fs_policy import (
 )
 from sandbox.undo_stack import undo_stack
 from tools.error_utils import format_tool_error
+
+
+# 全局文件锁管理器，防止并发写操作同一文件
+class FileLockManager:
+    """Per-path 线程锁管理器（同步工具使用）"""
+
+    def __init__(self):
+        self._locks: dict[str, threading.Lock] = {}
+        self._global_lock = threading.Lock()
+
+    def acquire(self, path: str) -> threading.Lock:
+        """获取指定路径的锁"""
+        with self._global_lock:
+            if path not in self._locks:
+                self._locks[path] = threading.Lock()
+            return self._locks[path]
+
+
+file_lock_manager = FileLockManager()
 
 
 def _resolve_read_path(path: str, root_dir: str) -> Path | None:
@@ -115,28 +135,31 @@ class WriteTool(BaseTool):
         if is_protected_file(safe_path):
             return format_tool_error("write", f"拒绝写入受保护文件类型: {safe_path.suffix}")
 
-        try:
-            was_new = not safe_path.exists()
-            old_content = None
-            if not was_new:
-                try:
-                    old_content = safe_path.read_text(encoding="utf-8")
-                except Exception:
-                    pass
+        # 获取文件锁，防止并发写
+        lock = file_lock_manager.acquire(str(safe_path))
+        with lock:
+            try:
+                was_new = not safe_path.exists()
+                old_content = None
+                if not was_new:
+                    try:
+                        old_content = safe_path.read_text(encoding="utf-8")
+                    except Exception:
+                        pass
 
-            write_atomic(safe_path, content)
+                write_atomic(safe_path, content)
 
-            undo_stack.record_write(
-                self.agent_id,
-                str(safe_path),
-                old_content,
-                content,
-                was_new_file=was_new,
-            )
+                undo_stack.record_write(
+                    self.agent_id,
+                    str(safe_path),
+                    old_content,
+                    content,
+                    was_new_file=was_new,
+                )
 
-            return f"已写入 {safe_path.relative_to(Path(self.root_dir).resolve())} ({len(content)} 字符)"
-        except Exception as e:
-            return format_tool_error("write", f"写入失败 — {e}")
+                return f"已写入 {safe_path.relative_to(Path(self.root_dir).resolve())} ({len(content)} 字符)"
+            except Exception as e:
+                return format_tool_error("write", f"写入失败 — {e}")
 
 
 # ---------------------------------------------------------------------------
@@ -169,28 +192,31 @@ class EditTool(BaseTool):
         if not safe_path.exists():
             return format_tool_error("edit", f"文件不存在 '{path}'")
 
-        try:
-            content = safe_path.read_text(encoding="utf-8")
-        except Exception as e:
-            return format_tool_error("edit", f"读取失败 — {e}")
+        # 获取文件锁，防止并发编辑
+        lock = file_lock_manager.acquire(str(safe_path))
+        with lock:
+            try:
+                content = safe_path.read_text(encoding="utf-8")
+            except Exception as e:
+                return format_tool_error("edit", f"读取失败 — {e}")
 
-        count = content.count(old_text)
-        if count == 0:
-            return format_tool_error("edit", "old_text 未在文件中找到。请确保文本精确匹配（包括空格和缩进）。")
-        if count > 1:
-            return format_tool_error("edit", f"old_text 在文件中出现了 {count} 次，需要唯一匹配。请提供更多上下文以精确定位。")
+            count = content.count(old_text)
+            if count == 0:
+                return format_tool_error("edit", "old_text 未在文件中找到。请确保文本精确匹配（包括空格和缩进）。")
+            if count > 1:
+                return format_tool_error("edit", f"old_text 在文件中出现了 {count} 次，需要唯一匹配。请提供更多上下文以精确定位。")
 
-        new_content = content.replace(old_text, new_text, 1)
-        write_atomic(safe_path, new_content)
+            new_content = content.replace(old_text, new_text, 1)
+            write_atomic(safe_path, new_content)
 
-        undo_stack.record_edit(
-            self.agent_id,
-            str(safe_path),
-            content,
-            new_content,
-        )
+            undo_stack.record_edit(
+                self.agent_id,
+                str(safe_path),
+                content,
+                new_content,
+            )
 
-        return f"已编辑 {path}（替换了 1 处匹配）"
+            return f"已编辑 {path}（替换了 1 处匹配）"
 
 
 # ---------------------------------------------------------------------------

@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import asyncio
+import logging
+import time
 import uuid
 from dataclasses import dataclass, field
 from typing import Literal
 
+logger = logging.getLogger(__name__)
 Decision = Literal["approved", "denied", "timeout"]
 
 
@@ -16,6 +19,7 @@ class PendingApproval:
     agent_id: str
     tool: str
     input_preview: str
+    created_at: float = field(default_factory=time.time)
     event: asyncio.Event = field(default_factory=asyncio.Event)
     result: Decision | None = None
 
@@ -23,12 +27,16 @@ class PendingApproval:
 class ApprovalStore:
     """内存态 approval 存储，支持 create/wait/resolve"""
 
-    def __init__(self) -> None:
+    def __init__(self, default_timeout: float = 300) -> None:
         self._pending: dict[str, PendingApproval] = {}
         self._lock = asyncio.Lock()
+        self._default_timeout = default_timeout
 
     def create(self, agent_id: str, tool: str, input_preview: str) -> str:
         """创建待确认请求，返回 approval_id"""
+        # 清理已过期请求
+        self._cleanup_expired()
+
         approval_id = str(uuid.uuid4())
         pending = PendingApproval(
             approval_id=approval_id,
@@ -37,7 +45,19 @@ class ApprovalStore:
             input_preview=input_preview[:500] if input_preview else "",
         )
         self._pending[approval_id] = pending
+        logger.info(f"Approval created: {approval_id} for {tool}")
         return approval_id
+
+    def _cleanup_expired(self) -> None:
+        """清理已过期的审批请求"""
+        now = time.time()
+        expired = [
+            aid for aid, p in self._pending.items()
+            if now - p.created_at > self._default_timeout
+        ]
+        for aid in expired:
+            logger.warning(f"Cleaning up expired approval: {aid}")
+            self._pending.pop(aid, None)
 
     async def wait(
         self, approval_id: str, timeout_seconds: float = 60
@@ -51,6 +71,7 @@ class ApprovalStore:
             await asyncio.wait_for(pending.event.wait(), timeout=timeout_seconds)
         except asyncio.TimeoutError:
             pending.result = "timeout"
+            logger.warning(f"Approval timeout: {approval_id}")
         finally:
             async with self._lock:
                 self._pending.pop(approval_id, None)
@@ -61,9 +82,11 @@ class ApprovalStore:
         """用户确认/拒绝，唤醒等待的协程"""
         pending = self._pending.get(approval_id)
         if not pending:
+            logger.warning(f"Attempted to resolve non-existent approval: {approval_id}")
             return False
         pending.result = decision
         pending.event.set()
+        logger.info(f"Approval resolved: {approval_id} -> {decision}")
         return True
 
 

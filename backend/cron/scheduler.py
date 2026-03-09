@@ -103,9 +103,14 @@ class CronScheduler:
                     continue
                 to_remove: list[str] = []
                 for job in due_jobs:
-                    await self._fire_job(job)
-                    job.last_run_at_ms = now_ms
-                    job.last_run_status = "ok"
+                    try:
+                        await self._fire_job(job)
+                        job.last_run_at_ms = now_ms
+                        job.last_run_status = "ok"
+                    except Exception as e:
+                        logger.exception(f"Cron job {job.id} failed: {e}")
+                        job.last_run_status = "error"
+                        # 继续处理下一个 job，不影响其他任务
                     if job.schedule.kind == "at":
                         job.enabled = False
                         job.next_run_at_ms = None
@@ -133,7 +138,9 @@ class CronScheduler:
                 await asyncio.sleep(10)
 
     async def _fire_job(self, job: CronJob) -> None:
-        """触发 job：enqueue_system_event + request_heartbeat_now。"""
+        """触发 job：enqueue_system_event + request_heartbeat_now。
+        确保事件入队和心跳唤醒的一致性。
+        """
         if job.payload.kind != "systemEvent" or not job.payload.text.strip():
             return
         from infra.system_events import enqueue_system_event
@@ -141,14 +148,42 @@ class CronScheduler:
         agent_id = job.agent_id or "main"
         main_sid = session_manager.resolve_main_session_id(agent_id)
         session_key = session_manager.session_key_from_session_id(agent_id, main_sid)
-        enqueue_system_event(
-            job.payload.text,
-            session_key=session_key,
-            context_key=f"cron:{job.id}",
-        )
+
+        # 标记是否成功入队
+        event_enqueued = False
+        heartbeat_ok = False
+
+        try:
+            enqueue_system_event(
+                job.payload.text,
+                session_key=session_key,
+                context_key=f"cron:{job.id}",
+            )
+            event_enqueued = True
+            logger.debug(f"Cron event enqueued: {job.id}")
+        except Exception as e:
+            logger.error(f"Failed to enqueue cron event {job.id}: {e}")
+            return  # 入队失败，直接返回
+
+        # 尝试唤醒心跳，带重试机制
         if self._request_heartbeat_now:
-            try:
-                self._request_heartbeat_now(agent_id, f"cron:{job.id}")
-            except Exception as e:
-                logger.warning(f"request_heartbeat_now failed: {e}")
-        logger.info(f"Cron job {job.id} fired: {job.payload.text[:50]}...")
+            max_retries = 3
+            for attempt in range(max_retries):
+                try:
+                    self._request_heartbeat_now(agent_id, f"cron:{job.id}")
+                    heartbeat_ok = True
+                    break
+                except Exception as e:
+                    logger.warning(f"request_heartbeat_now failed (attempt {attempt + 1}/{max_retries}): {e}")
+                    if attempt < max_retries - 1:
+                        await asyncio.sleep(0.5 * (attempt + 1))  # 指数退避
+
+            if not heartbeat_ok:
+                # 心跳唤醒失败，记录错误但事件已入队，心跳会在下次轮询时处理
+                logger.error(f"Failed to wake heartbeat for cron job {job.id} after {max_retries} attempts. "
+                           f"Event is enqueued and will be processed on next heartbeat cycle.")
+        else:
+            logger.warning(f"request_heartbeat_now not configured for cron job {job.id}")
+
+        logger.info(f"Cron job {job.id} fired: {job.payload.text[:50]}... "
+                   f"(event_enqueued={event_enqueued}, heartbeat_ok={heartbeat_ok})")

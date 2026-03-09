@@ -163,6 +163,7 @@ class AgentManager:
         self._initialized = False
         self._main_loop: asyncio.AbstractEventLoop | None = None
         self.lifecycle_hooks: LifecycleHooks | None = None  # 可选扩展点
+        self._pending_tasks: set[asyncio.Task] = set()  # 跟踪后台任务，确保关闭前完成
 
     async def initialize(self, data_dir: str) -> None:
         self.data_dir = data_dir
@@ -227,6 +228,22 @@ class AgentManager:
         if agent_id not in self._states:
             self._states[agent_id] = AgentState(agent_id=agent_id)
         return self._states[agent_id]
+
+    async def wait_for_pending_tasks(self, timeout: float = 30.0) -> None:
+        """等待所有后台任务完成，用于应用关闭前确保数据不丢失"""
+        if not self._pending_tasks:
+            return
+        logger.info(f"等待 {len(self._pending_tasks)} 个后台任务完成...")
+        # 创建所有任务的副本
+        pending = list(self._pending_tasks)
+        self._pending_tasks.clear()
+        try:
+            await asyncio.wait_for(asyncio.gather(*pending, return_exceptions=True), timeout=timeout)
+            logger.info("所有后台任务已完成")
+        except asyncio.TimeoutError:
+            logger.warning(f"等待后台任务超时（{timeout}秒），部分任务可能未完成")
+        except Exception as e:
+            logger.error(f"等待后台任务时出错: {e}")
 
     def _build_tools(self, agent_id: str, session_id: str = "") -> list:
         workspace = str(resolve_agent_workspace(agent_id))
@@ -416,11 +433,21 @@ class AgentManager:
                             for r in results
                         ],
                     }
+                    # 限制检索结果总长度，避免上下文过大
+                    max_context_chars = 5000
                     context_parts = ["[记忆检索结果]"]
+                    total_chars = 0
                     for r in results:
-                        context_parts.append(f"来源: {r['source']}#L{r['line']}")
-                        context_parts.append(r["text"])
-                        context_parts.append("")
+                        entry_text = f"来源: {r['source']}#L{r['line']}\n{r['text']}\n\n"
+                        if total_chars + len(entry_text) > max_context_chars:
+                            # 超过限制，添加省略说明
+                            remaining = max_context_chars - total_chars
+                            if remaining > 50:
+                                context_parts.append(entry_text[:remaining] + "...")
+                            context_parts.append("[更多检索结果因长度限制被截断]")
+                            break
+                        context_parts.append(entry_text)
+                        total_chars += len(entry_text)
                     rag_context = "\n".join(context_parts)
                     history.append({"role": "assistant", "content": rag_context})
 
@@ -799,13 +826,16 @@ class AgentManager:
                 }
                 for m in messages
             ]
-            asyncio.create_task(
+            # 创建后台任务并跟踪，确保关闭前完成
+            task = asyncio.create_task(
                 self._save_session_memory_background(
                     agent_id=agent_id,
                     source_session_id=session_id,
                     messages_snapshot=snapshot,
                 )
             )
+            self._pending_tasks.add(task)
+            task.add_done_callback(self._pending_tasks.discard)
             mem_result = {"saved": False, "queued": True, "reason": "后台保存中"}
 
         session_manager.reset_session(session_id, agent_id)

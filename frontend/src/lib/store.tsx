@@ -249,7 +249,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     try {
       const session = await api.fetchMainSession(currentAgentId);
       setCurrentSessionId(session.session_id);
-      chat.loadMessages(currentAgentId, session.session_id);
+      await chat.loadMessages(currentAgentId, session.session_id);
       const model = await api.fetchCurrentModel(currentAgentId);
       setCurrentModel(model);
     } catch {
@@ -298,24 +298,27 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, [currentAgentId, triggerSkillsRefresh, loadMainSession]);
 
   const switchAgent = useCallback(async (agentId: string) => {
+    // 保存当前 Agent 的状态（不要清空，只是切换）
     setCurrentAgentId(agentId);
     try { window.localStorage.setItem("clawchain.agent", agentId); } catch {}
     setCurrentSessionId(null);
     setInspectorFile(null);
     setInspectorFileLoading(false);
-    chat.clearChat();
 
+    // 加载新 Agent 的会话和消息
     try {
       const session = await api.fetchMainSession(agentId);
       setCurrentSessionId(session.session_id);
-      chat.loadMessages(agentId, session.session_id);
+      // 加载消息时会自动恢复该 Agent 的 isStreaming 状态
+      await chat.loadMessages(agentId, session.session_id);
       const model = await api.fetchCurrentModel(agentId);
       setCurrentModel(model);
     } catch {
+      // 如果加载失败，清空该 Agent 的消息
       chat.setMessages([]);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [chat]);
 
   const setRagMode = useCallback(async (enabled: boolean) => {
     await api.updateRagMode(enabled);

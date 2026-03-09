@@ -123,8 +123,13 @@ class HeartbeatRunner:
         self._tasks.clear()
 
     def _ensure_task(self, agent_id: str) -> None:
+        """确保心跳任务存在且正在运行，避免重复创建"""
         if agent_id in self._tasks:
-            return
+            task = self._tasks[agent_id]
+            if not task.done():
+                return  # 任务存在且仍在运行，无需创建
+            # 任务已完成，清理旧任务
+            self._tasks.pop(agent_id, None)
         task = asyncio.create_task(self._heartbeat_loop(agent_id))
         self._tasks[agent_id] = task
 

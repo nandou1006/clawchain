@@ -19,6 +19,9 @@ import threading
 from pathlib import Path
 from typing import Any
 
+from contextlib import contextmanager
+
+
 logger = logging.getLogger(__name__)
 
 _HAS_JIEBA = False
@@ -174,10 +177,15 @@ class MemorySearchEngine:
                     )
                 """)
 
-    def _get_conn(self) -> sqlite3.Connection:
+    @contextmanager
+    def _get_conn(self):
+        """获取 SQLite 连接，确保在使用后正确关闭"""
         conn = sqlite3.connect(str(self.db_path), check_same_thread=False)
         conn.row_factory = sqlite3.Row
-        return conn
+        try:
+            yield conn
+        finally:
+            conn.close()
 
     def rebuild_index(self) -> None:
         """完全重建索引"""

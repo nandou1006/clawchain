@@ -62,6 +62,11 @@ async def lifespan(application: FastAPI):
     stop_subagent_archive()
     if getattr(application.state, "cron_scheduler", None):
         await application.state.cron_scheduler.stop()
+
+    # 等待后台记忆保存任务完成
+    from graph.agent import agent_manager
+    await agent_manager.wait_for_pending_tasks(timeout_seconds=30)
+
     await heartbeat_runner.stop()
     logger.info("Heartbeat stopped")
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import threading
 import time
 from dataclasses import dataclass, field
 from typing import Any, Callable, Literal
@@ -373,12 +374,27 @@ class SubagentRegistry:
             to_remove.append((rid, r))
 
         for rid, r in to_remove:
+            # 更新状态为 archived
+            r.state = "archived"
+            r.ended_at = time.time()
+            # 发送事件通知前端
+            try:
+                from graph.agent import event_bus
+                event_bus.emit(r.requester_agent_id, {
+                    "type": "lifecycle",
+                    "event": "subagent_archived",
+                    "run_id": rid,
+                    "child_session_key": r.child_session_key,
+                })
+            except Exception:
+                pass
             if on_expire:
                 try:
                     on_expire(r)
                 except Exception:
                     pass
-            del self._runs[rid]
+            with self._lock:
+                del self._runs[rid]
         if to_remove:
             self._persist_to_disk()
         return len(to_remove)

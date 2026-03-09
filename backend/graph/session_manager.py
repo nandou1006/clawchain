@@ -855,15 +855,29 @@ class SessionManager:
         path = self._session_path(session_id, agent_id)
         if path.exists():
             archive_dir = resolve_agent_sessions_dir(agent_id) / "archive"
-            archive_dir.mkdir(parents=True, exist_ok=True)
-            ts = int(_time.time())
-            archive_name = f"{session_id}.reset.{ts}.json"
-            path.rename(archive_dir / archive_name)
-            result["archived"] = True
-            result["archive_file"] = f"archive/{archive_name}"
+            try:
+                archive_dir.mkdir(parents=True, exist_ok=True)
+                ts = int(_time.time())
+                archive_name = f"{session_id}.reset.{ts}.json"
+                archive_path = archive_dir / archive_name
+                path.rename(archive_path)
+                result["archived"] = True
+                result["archive_file"] = f"archive/{archive_name}"
+            except OSError as e:
+                logger.warning(f"Failed to archive session {session_id}: {e}")
+                # 归档失败时尝试直接删除原文件，避免会话无法重置
+                try:
+                    path.unlink()
+                except OSError:
+                    pass
 
         cache_key = f"{agent_id}:{session_id}"
         self._cache.invalidate(cache_key)
+
+        # 从索引中移除会话（因为已归档）
+        session_key = self.session_key_from_session_id(agent_id, session_id)
+        self._remove_session_store_entry(agent_id, session_key)
+
         self.ensure_session(session_id, agent_id)
 
         return result

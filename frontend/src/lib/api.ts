@@ -156,7 +156,7 @@ export async function streamChat(
 export async function abortChat(
   agentId: string,
   sessionId: string,
-  opts?: { clearFollowups?: boolean },
+  opts?: { clearFollowups?: boolean; userInitiated?: boolean },
 ): Promise<{ aborted: boolean; pending_followups: number; cleared_followups: number }> {
   const resp = await fetch(`${API_BASE}/chat/abort`, {
     method: "POST",
@@ -165,6 +165,7 @@ export async function abortChat(
       agent_id: agentId,
       session_id: sessionId,
       clear_followups: Boolean(opts?.clearFollowups),
+      user_initiated: opts?.userInitiated !== false, // 默认为 true
     }),
   });
   if (!resp.ok) {
