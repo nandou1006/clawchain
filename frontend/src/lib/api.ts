@@ -119,15 +119,28 @@ export async function streamChat(
       buffer += decoder.decode(value, { stream: true });
       const lines = buffer.split("\n");
       buffer = lines.pop() || "";
+      let reachedTerminalEvent = false;
       for (const line of lines) {
         if (line.startsWith("data: ")) {
           try {
             const parsed = JSON.parse(line.slice(6)) as SSEEvent;
             onEvent(parsed);
+            if (parsed.type === "done" || parsed.type === "error" || parsed.type === "aborted") {
+              reachedTerminalEvent = true;
+              break;
+            }
           } catch {
             // ignore
           }
         }
+      }
+      if (reachedTerminalEvent) {
+        try {
+          await reader.cancel();
+        } catch {
+          // ignore reader cancellation failures
+        }
+        break;
       }
     }
   }

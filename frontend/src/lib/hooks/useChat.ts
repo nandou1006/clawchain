@@ -156,6 +156,7 @@ export function useChat(
 
     let segmentToolCalls: { tool: string; input: any; output: string }[] = [];
     let doneReceived = false;
+    let terminalErrorReceived = false;
 
     let timeoutMs: number | undefined;
     if (chatTimeoutRef.current === null) {
@@ -420,6 +421,8 @@ export function useChat(
             break;
 
           case "error":
+            terminalErrorReceived = true;
+            doneReceived = true;
             setMessages(prev => {
               const targetId = streamingAssistantIdRef.current || assistantMsgId;
               const idx = prev.findIndex(m => m.id === targetId);
@@ -440,6 +443,8 @@ export function useChat(
       }, { signal: controller.signal, timeoutMs });
     } catch (e: any) {
       if (e.name !== "AbortError") {
+        terminalErrorReceived = true;
+        doneReceived = true;
         const friendly = (e.message || "").includes("timeout")
           ? e.message
           : `**Connection error:** ${e.message}`;
@@ -467,7 +472,7 @@ export function useChat(
       userStoppedRef.current = false;
       if (!doneReceived) {
         // 仅在非手动中断时回源重载，避免 stop 后突兀刷新。
-        if (!stoppedByUser) {
+        if (!stoppedByUser && !terminalErrorReceived) {
           try {
             if (sessionId) await loadMessages(currentAgentId, sessionId);
           } catch { /* best-effort reload */ }

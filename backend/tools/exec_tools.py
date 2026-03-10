@@ -28,6 +28,7 @@ class ExecTool(BaseTool):
     description: str = "在沙箱环境下执行 Shell 命令。CWD 限制在工作区内，危险命令会被拦截。"
     args_schema: type[BaseModel] = ExecInput
     root_dir: str = ""
+    max_output: int = 5000
     agent_id: str = "main"
 
     def __init__(self, **data):
@@ -141,6 +142,7 @@ class PythonReplTool(BaseTool):
     description: str = "执行 Python 代码。适合数据处理、计算和脚本任务。"
     args_schema: type[BaseModel] = PythonReplInput
     root_dir: str = ""
+    max_output: int = 5000
 
     def __init__(self, **data):
         super().__init__(**data)
