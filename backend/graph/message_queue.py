@@ -10,8 +10,24 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-DEBOUNCE_MS = 1000
-FOLLOWUP_CAP = 20
+def _get_followup_cap() -> int:
+    """从配置获取followup队列上限"""
+    try:
+        from config import get_config
+        cfg = get_config()
+        return cfg.get("app", {}).get("messageQueue", {}).get("followupCap", 20)
+    except Exception:
+        return 20
+
+
+def _get_debounce_ms() -> int:
+    """从配置获取防抖时间（毫秒）"""
+    try:
+        from config import get_config
+        cfg = get_config()
+        return cfg.get("app", {}).get("messageQueue", {}).get("debounceMs", 1000)
+    except Exception:
+        return 1000
 
 
 @dataclass
@@ -38,7 +54,8 @@ class SessionQueue:
         return len(self._followup)
 
     def enqueue_followup(self, message: str) -> int:
-        if len(self._followup) >= FOLLOWUP_CAP:
+        followup_cap = _get_followup_cap()
+        if len(self._followup) >= followup_cap:
             self._followup.pop(0)
         self._followup.append(FollowupItem(message=message))
         return len(self._followup)
@@ -55,9 +72,11 @@ class SessionQueue:
         self._followup.clear()
         if len(items) == 1:
             return items[0].message
-        lines = ["[后续消息]"]
+        # Preserve timestamps for context understanding
+        lines = []
         for i, item in enumerate(items, 1):
-            lines.append(f"{i}. {item.message}")
+            ts = time.strftime("%H:%M:%S", time.localtime(item.timestamp))
+            lines.append(f"[{ts}] {item.message}")
         return "\n".join(lines)
 
     async def acquire(self) -> None:

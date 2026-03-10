@@ -28,8 +28,17 @@ class ExecTool(BaseTool):
     description: str = "在沙箱环境下执行 Shell 命令。CWD 限制在工作区内，危险命令会被拦截。"
     args_schema: type[BaseModel] = ExecInput
     root_dir: str = ""
-    max_output: int = 5000
     agent_id: str = "main"
+
+    def __init__(self, **data):
+        super().__init__(**data)
+        # 从配置读取输出限制
+        try:
+            from config import get_config
+            cfg = get_config()
+            self.max_output = cfg.get("tools", {}).get("exec", {}).get("maxOutputChars", 5000)
+        except Exception:
+            self.max_output = 5000
 
     def _do_exec(self, command: str, timeout: int) -> str:
         """Actually execute the command (after blacklist check)"""
@@ -132,7 +141,16 @@ class PythonReplTool(BaseTool):
     description: str = "执行 Python 代码。适合数据处理、计算和脚本任务。"
     args_schema: type[BaseModel] = PythonReplInput
     root_dir: str = ""
-    max_output: int = 5000
+
+    def __init__(self, **data):
+        super().__init__(**data)
+        # 从配置读取输出限制
+        try:
+            from config import get_config
+            cfg = get_config()
+            self.max_output = cfg.get("tools", {}).get("exec", {}).get("maxOutputChars", 5000)
+        except Exception:
+            self.max_output = 5000
 
     def _run(self, code: str) -> str:
         import sys

@@ -81,6 +81,23 @@ export interface Messages {
   configSkills: string;
   configApp: string;
   configAdvanced: string;
+  configChat: string;
+
+  // Config form labels
+  labelLogLevel: string;
+  labelProxy: string;
+  labelTimeoutSeconds: string;
+  labelMaxContextChars: string;
+  labelLogFileEnabled: string;
+  labelLogFileMaxBytes: string;
+  labelLogFileBackupCount: string;
+  labelDebounceMs: string;
+  labelFollowupCap: string;
+  labelMaxEvents: string;
+  labelLoopWarningThreshold: string;
+  labelLoopCriticalThreshold: string;
+  labelLoopCircuitBreaker: string;
+  labelLoopHistorySize: string;
 
   // AgentCard / Config form
   inheritDefault: string;
@@ -296,6 +313,23 @@ export const zhCN: Messages = {
   configSkills: "技能包",
   configApp: "应用设置",
   configAdvanced: "高级设置",
+  configChat: "对话设置",
+
+  // Config form labels
+  labelLogLevel: "日志级别",
+  labelProxy: "网络代理",
+  labelTimeoutSeconds: "超时时间 (秒)",
+  labelMaxContextChars: "RAG 上下文最大字符",
+  labelLogFileEnabled: "启用文件日志",
+  labelLogFileMaxBytes: "单个文件最大字节",
+  labelLogFileBackupCount: "保留备份数量",
+  labelDebounceMs: "防抖时间 (ms)",
+  labelFollowupCap: "Followup 队列上限",
+  labelMaxEvents: "事件队列大小",
+  labelLoopWarningThreshold: "警告阈值",
+  labelLoopCriticalThreshold: "严重警告阈值",
+  labelLoopCircuitBreaker: "熔断阈值",
+  labelLoopHistorySize: "历史记录大小",
 
   inputPlaceholder: "输入消息... / 输入斜杠查看命令",
   sendHint: "Enter 发送 · Shift+Enter 换行 · /命令",
@@ -481,6 +515,23 @@ export const enUS: Messages = {
   configSkills: "Skills",
   configApp: "App Settings",
   configAdvanced: "Advanced",
+  configChat: "Chat Settings",
+
+  // Config form labels
+  labelLogLevel: "Log Level",
+  labelProxy: "Network Proxy",
+  labelTimeoutSeconds: "Timeout (seconds)",
+  labelMaxContextChars: "RAG Context Max Chars",
+  labelLogFileEnabled: "Enable File Logging",
+  labelLogFileMaxBytes: "Max File Size (bytes)",
+  labelLogFileBackupCount: "Backup Count",
+  labelDebounceMs: "Debounce (ms)",
+  labelFollowupCap: "Followup Queue Cap",
+  labelMaxEvents: "Event Queue Size",
+  labelLoopWarningThreshold: "Warning Threshold",
+  labelLoopCriticalThreshold: "Critical Threshold",
+  labelLoopCircuitBreaker: "Circuit Breaker",
+  labelLoopHistorySize: "History Size",
 
   inputPlaceholder: "Type a message... / Type slash for commands",
   sendHint: "Enter to send · Shift+Enter for newline · /commands",

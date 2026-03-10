@@ -721,6 +721,12 @@ export default function ConfigModal() {
                   <Input label="活跃时段开始" value={defaults.heartbeat?.activeHours?.start || "08:00"} onChange={(v) => handleUpdate("agents.defaults.heartbeat.activeHours", { ...defaults.heartbeat?.activeHours, start: v })} placeholder="08:00" />
                   <Input label="活跃时段结束" value={defaults.heartbeat?.activeHours?.end || "24:00"} onChange={(v) => handleUpdate("agents.defaults.heartbeat.activeHours", { ...defaults.heartbeat?.activeHours, end: v })} placeholder="24:00" />
                 </div>
+                <Input label="事件队列大小" value={String(defaults.heartbeat?.maxEvents ?? 50)} onChange={(v) => handleUpdate("agents.defaults.heartbeat.maxEvents", parseInt(v) || 50)} type="number" hint="心跳事件队列最大条数" />
+              </Section>
+
+              {/* Chat */}
+              <Section title="对话设置" icon={<Clock className="w-3.5 h-3.5" style={{ color: "var(--text-secondary)" }} />} defaultOpen={false}>
+                <Input label="超时时间 (秒)" value={String(config.chat?.timeoutSeconds ?? 120)} onChange={(v) => handleUpdate("chat.timeoutSeconds", parseInt(v) || 120)} type="number" hint="0 表示无超时" />
               </Section>
 
               {/* Memory Search */}
@@ -730,6 +736,7 @@ export default function ConfigModal() {
                   { value: "local", label: "本地 (sentence-transformers)" },
                   { value: "openai", label: "远程 OpenAI 兼容 API" },
                 ]} onChange={(v) => handleUpdate("agents.defaults.memorySearch.provider", v)} />
+                <Input label="RAG 上下文最大字符" value={String(defaults.memorySearch?.maxContextChars ?? 5000)} onChange={(v) => handleUpdate("agents.defaults.memorySearch.maxContextChars", parseInt(v) || 5000)} type="number" hint="检索结果上下文长度限制" />
                 {defaults.memorySearch?.provider === "openai" && (
                   <>
                     <Input label="API Base URL" value={defaults.memorySearch?.remote?.baseUrl || ""} onChange={(v) => handleUpdate("agents.defaults.memorySearch.remote.baseUrl", v)} placeholder="https://api.openai.com/v1" />
@@ -787,6 +794,13 @@ export default function ConfigModal() {
                 ]} onChange={(v) => handleUpdate("sandbox.writeApproval", v)} />
                 <Toggle label="执行命令前工作区快照" value={config.sandbox?.snapshotBeforeExec ?? false} onChange={(v) => handleUpdate("sandbox.snapshotBeforeExec", v)} />
                 <Input label="撤销栈大小" value={String(config.sandbox?.undoStackSize ?? 50)} onChange={(v) => handleUpdate("sandbox.undoStackSize", parseInt(v) || 50)} type="number" hint="Agent 可回滚的最近操作数量" />
+                <div className="pt-2 border-t border-[var(--border)]">
+                  <p className="text-xs font-medium mb-2" style={{ color: "var(--text-secondary)" }}>循环检测配置</p>
+                  <Input label="警告阈值" value={String(config.sandbox?.loopDetection?.warningThreshold ?? 10)} onChange={(v) => handleUpdate("sandbox.loopDetection.warningThreshold", parseInt(v) || 10)} type="number" hint="相同参数调用达到此次数触发警告" />
+                  <Input label="严重警告阈值" value={String(config.sandbox?.loopDetection?.criticalThreshold ?? 20)} onChange={(v) => handleUpdate("sandbox.loopDetection.criticalThreshold", parseInt(v) || 20)} type="number" hint="相同参数调用达到此次数触发严重警告" />
+                  <Input label="熔断阈值" value={String(config.sandbox?.loopDetection?.circuitBreaker ?? 30)} onChange={(v) => handleUpdate("sandbox.loopDetection.circuitBreaker", parseInt(v) || 30)} type="number" hint="总调用次数达到此次数触发熔断" />
+                  <Input label="历史记录大小" value={String(config.sandbox?.loopDetection?.historySize ?? 30)} onChange={(v) => handleUpdate("sandbox.loopDetection.historySize", parseInt(v) || 30)} type="number" hint="循环检测保留的历史调用记录数" />
+                </div>
               </Section>
 
               {/* Notifications */}
@@ -840,6 +854,21 @@ export default function ConfigModal() {
                   { value: "warning", label: "Warning" }, { value: "error", label: "Error" },
                 ]} onChange={(v) => handleUpdate("app.logLevel", v)} />
                 <Input label="网络代理" value={config.app?.proxy || ""} onChange={(v) => handleUpdate("app.proxy", v || null)} placeholder="http://proxy:port" />
+                <div className="pt-2 border-t border-[var(--border)]">
+                  <p className="text-xs font-medium mb-2" style={{ color: "var(--text-secondary)" }}>日志文件配置</p>
+                  <Toggle label="启用文件日志" value={config.app?.logFile?.enabled !== false} onChange={(v) => handleUpdate("app.logFile.enabled", v)} />
+                  <Input label="单个文件最大字节" value={String(config.app?.logFile?.maxBytes ?? 10485760)} onChange={(v) => handleUpdate("app.logFile.maxBytes", parseInt(v) || 10485760)} type="number" hint="默认 10MB" />
+                  <Input label="保留备份数量" value={String(config.app?.logFile?.backupCount ?? 5)} onChange={(v) => handleUpdate("app.logFile.backupCount", parseInt(v) || 5)} type="number" hint="默认保留 5 个备份" />
+                </div>
+                <div className="pt-2 border-t border-[var(--border)]">
+                  <p className="text-xs font-medium mb-2" style={{ color: "var(--text-secondary)" }}>消息队列配置</p>
+                  <Input label="防抖时间 (ms)" value={String(config.app?.messageQueue?.debounceMs ?? 1000)} onChange={(v) => handleUpdate("app.messageQueue.debounceMs", parseInt(v) || 1000)} type="number" hint="默认 1000ms" />
+                  <Input label="Followup 队列上限" value={String(config.app?.messageQueue?.followupCap ?? 20)} onChange={(v) => handleUpdate("app.messageQueue.followupCap", parseInt(v) || 20)} type="number" hint="默认 20 条" />
+                </div>
+                <div className="pt-2 border-t border-[var(--border)]">
+                  <p className="text-xs font-medium mb-2" style={{ color: "var(--text-secondary)" }}>系统事件配置</p>
+                  <Input label="系统事件队列大小" value={String(config.app?.systemEvents?.maxEvents ?? 20)} onChange={(v) => handleUpdate("app.systemEvents.maxEvents", parseInt(v) || 20)} type="number" hint="默认 20 条" />
+                </div>
               </Section>
 
               {/* Advanced */}

@@ -124,13 +124,22 @@ def restore_registry_from_disk(
     runs: dict[str, SubagentRunRecord],
     merge_only: bool = False,
 ) -> int:
-    """恢复 registry，merge_only 时跳过已存在的 run_id"""
+    """恢复 registry，merge_only 时跳过已存在的 run_id。验证记录完整性和过期状态。"""
     restored = load_registry_from_disk()
     if not restored:
         return 0
     added = 0
+    now_ms = time.time() * 1000
     for run_id, entry in restored.items():
         if not run_id or not entry:
+            continue
+        # 验证必填字段
+        if not all([entry.run_id, entry.child_session_key, entry.requester_session_key]):
+            logger.warning(f"Skipping invalid subagent record: {run_id} (missing required fields)")
+            continue
+        # 检查是否已过期
+        if entry.archive_at_ms and now_ms > entry.archive_at_ms:
+            logger.info(f"Skipping expired subagent record: {run_id}")
             continue
         if merge_only and run_id in runs:
             continue

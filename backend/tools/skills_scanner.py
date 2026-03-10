@@ -52,8 +52,11 @@ def _parse_skill_frontmatter(skill_md_path: Path) -> dict[str, str] | None:
         data = yaml.safe_load(fm_text)
         if isinstance(data, dict):
             return data
-    except Exception:
-        pass
+        logger.warning(f"Invalid frontmatter in {skill_md_path}: not a dict")
+    except yaml.YAMLError as e:
+        logger.warning(f"YAML parse error in {skill_md_path}: {e}")
+    except Exception as e:
+        logger.warning(f"Failed to parse frontmatter in {skill_md_path}: {e}")
     return None
 
 

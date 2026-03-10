@@ -56,6 +56,7 @@ class HeartbeatConfig(BaseModel):
     ackMaxChars: int = 300
     activeHours: Optional[ActiveHoursConfig] = None
     target: str = "webchat"
+    maxEvents: int = Field(default=50, ge=10, le=200)  # 心跳事件队列大小
 
     @field_validator("every")
     @classmethod
@@ -144,6 +145,10 @@ class MemorySearchConfig(BaseModel):
     provider: str = "local"
     model: str = "text-embedding-3-small"
     remote: RemoteConfig = Field(default_factory=RemoteConfig)
+    # RAG 检索结果上下文限制
+    maxContextChars: int = Field(default=5000, ge=1000, le=20000)
+    topK: int = Field(default=5, ge=1, le=20)
+    minScore: float = Field(default=0.6, ge=0.0, le=1.0)
 
 
 # ---------------------------------------------------------------------------
@@ -239,6 +244,7 @@ class ExecApprovalConfig(BaseModel):
 class ExecToolsConfig(BaseModel):
     apply_patch: ExecToolConfig = Field(default_factory=ExecToolConfig)
     approval: ExecApprovalConfig = Field(default_factory=ExecApprovalConfig)
+    maxOutputChars: int = Field(default=5000, ge=1000, le=50000)  # 执行工具输出最大字符数
 
 
 class WebSearchConfig(BaseModel):
@@ -306,11 +312,32 @@ class SessionPruningConfig(BaseModel):
 # App Config (locale, theme, data directory, logging, proxy)
 # ---------------------------------------------------------------------------
 
+class MessageQueueConfig(BaseModel):
+    """消息队列配置"""
+    debounceMs: int = Field(default=1000, ge=100, le=10000)  # 防抖时间
+    followupCap: int = Field(default=20, ge=5, le=100)  # followup队列上限
+
+
+class SystemEventsConfig(BaseModel):
+    """系统事件队列配置"""
+    maxEvents: int = Field(default=20, ge=5, le=100)  # 系统事件队列大小
+
+
+class LogFileConfig(BaseModel):
+    """日志文件配置"""
+    enabled: bool = True  # 是否启用文件日志
+    maxBytes: int = Field(default=10 * 1024 * 1024, ge=1024)  # 单个文件最大大小，默认10MB
+    backupCount: int = Field(default=5, ge=0)  # 保留的备份文件数量
+
+
 class AppConfig(BaseModel):
     locale: str = "zh-CN"
     theme: str = "system"
     dataDir: Optional[str] = None
     logLevel: str = "info"
+    logFile: LogFileConfig = Field(default_factory=LogFileConfig)
+    messageQueue: MessageQueueConfig = Field(default_factory=MessageQueueConfig)
+    systemEvents: SystemEventsConfig = Field(default_factory=SystemEventsConfig)
     proxy: Optional[str] = None
 
     model_config = {"extra": "allow"}
@@ -336,11 +363,20 @@ class NotificationsConfig(BaseModel):
 # Sandbox Config
 # ---------------------------------------------------------------------------
 
+class LoopDetectionConfig(BaseModel):
+    """循环检测配置"""
+    warningThreshold: int = Field(default=10, ge=3, le=50)  # 警告阈值
+    criticalThreshold: int = Field(default=20, ge=5, le=100)  # 严重警告阈值
+    circuitBreaker: int = Field(default=30, ge=10, le=200)  # 熔断阈值
+    historySize: int = Field(default=30, ge=10, le=100)  # 历史记录大小
+
+
 class SandboxConfig(BaseModel):
     mode: Literal["off", "soft", "strict"] = "soft"
     snapshotBeforeExec: bool = False
     undoStackSize: int = 50
     writeApproval: Literal["off", "on_overwrite", "always"] = "on_overwrite"
+    loopDetection: LoopDetectionConfig = Field(default_factory=LoopDetectionConfig)
 
     model_config = {"extra": "allow"}
 

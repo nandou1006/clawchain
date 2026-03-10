@@ -506,23 +506,49 @@ export function subscribeAgentEvents(
   onError?: (error: unknown) => void,
 ): () => void {
   const url = `${API_BASE}/agents/${agentId}/events`;
-  const es = new EventSource(url);
+  let retryCount = 0;
+  const maxRetries = 5;
+  const baseDelay = 1000; // 1 second
+  let es: EventSource | null = null;
+  let closed = false;
 
-  es.onmessage = (evt) => {
-    try {
-      const parsed = JSON.parse(evt.data) as SSEEvent;
-      onEvent(parsed);
-    } catch {
-      // ignore malformed events
-    }
-  };
+  function connect() {
+    if (closed) return;
+    es = new EventSource(url);
 
-  es.onerror = (err) => {
-    onError?.(err);
-  };
+    es.onmessage = (evt) => {
+      retryCount = 0; // Reset retry count on success
+      try {
+        const parsed = JSON.parse(evt.data) as SSEEvent;
+        onEvent(parsed);
+      } catch {
+        // ignore malformed events
+      }
+    };
+
+    es.onerror = (err) => {
+      if (closed) return;
+
+      if (retryCount >= maxRetries) {
+        es?.close();
+        onError?.(new Error("Max retries reached"));
+        return;
+      }
+
+      // Exponential backoff
+      const delay = baseDelay * Math.pow(2, retryCount);
+      retryCount++;
+
+      es?.close();
+      setTimeout(connect, delay);
+    };
+  }
+
+  connect();
 
   return () => {
-    es.close();
+    closed = true;
+    es?.close();
   };
 }
 

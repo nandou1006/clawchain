@@ -7,10 +7,27 @@ from collections import deque
 from dataclasses import dataclass, field
 from typing import Any
 
-WARNING_THRESHOLD = 10
-CRITICAL_THRESHOLD = 20
-GLOBAL_CIRCUIT_BREAKER = 30
-HISTORY_SIZE = 30
+
+def _get_loop_config() -> dict[str, int]:
+    """从配置获取循环检测阈值"""
+    try:
+        from config import get_config
+        cfg = get_config()
+        sandbox_cfg = cfg.get("sandbox", {})
+        loop_cfg = sandbox_cfg.get("loopDetection", {})
+        return {
+            "warningThreshold": loop_cfg.get("warningThreshold", 10),
+            "criticalThreshold": loop_cfg.get("criticalThreshold", 20),
+            "circuitBreaker": loop_cfg.get("circuitBreaker", 30),
+            "historySize": loop_cfg.get("historySize", 30),
+        }
+    except Exception:
+        return {
+            "warningThreshold": 10,
+            "criticalThreshold": 20,
+            "circuitBreaker": 30,
+            "historySize": 30,
+        }
 
 
 @dataclass
@@ -23,9 +40,7 @@ class ToolCall:
 @dataclass
 class LoopDetector:
     """每个会话维护一个实例"""
-    history: deque[ToolCall] = field(
-        default_factory=lambda: deque(maxlen=HISTORY_SIZE)
-    )
+    history: deque[ToolCall] = field(default_factory=lambda: deque(maxlen=_get_loop_config()["historySize"]))
     total_calls: int = 0
 
     @staticmethod
@@ -37,6 +52,16 @@ class LoopDetector:
         """
         记录一次工具调用，返回警告消息（如有）。
         """
+        config = _get_loop_config()
+        warning_threshold = config["warningThreshold"]
+        critical_threshold = config["criticalThreshold"]
+        circuit_breaker = config["circuitBreaker"]
+
+        # 超过双倍阈值，强制重置
+        if self.total_calls >= circuit_breaker * 2:
+            self.reset()
+            return "[安全警告] 循环检测器已重置"
+
         args_hash = self._hash(args)
         result_hash = self._hash(result) if result is not None else None
 
@@ -48,7 +73,7 @@ class LoopDetector:
         self.history.append(call)
         self.total_calls += 1
 
-        if self.total_calls >= GLOBAL_CIRCUIT_BREAKER:
+        if self.total_calls >= circuit_breaker:
             return (
                 f"[安全警告] 工具调用已达 {self.total_calls} 次，触发全局熔断。"
                 "请停止当前循环并换一种方法。"
@@ -59,12 +84,12 @@ class LoopDetector:
             if c.tool_name == tool_name and c.args_hash == args_hash
         )
 
-        if repeat_count >= CRITICAL_THRESHOLD:
+        if repeat_count >= critical_threshold:
             return (
                 f"[严重警告] 工具 '{tool_name}' 使用相同参数已被调用 {repeat_count} 次。"
                 "请立即停止重复调用。"
             )
-        if repeat_count >= WARNING_THRESHOLD:
+        if repeat_count >= warning_threshold:
             return (
                 f"[警告] 工具 '{tool_name}' 使用相同参数已被调用 {repeat_count} 次，"
                 "可能陷入循环。请检查你的方法。"

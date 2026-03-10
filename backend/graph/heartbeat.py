@@ -21,7 +21,15 @@ from graph.audit_log import audit_logger
 
 logger = logging.getLogger(__name__)
 
-MAX_EVENTS_PER_AGENT = 50
+
+def _get_max_events_per_agent() -> int:
+    """从配置获取心跳事件队列大小"""
+    try:
+        from config import get_config
+        cfg = get_config()
+        return cfg.get("agents", {}).get("defaults", {}).get("heartbeat", {}).get("maxEvents", 50)
+    except Exception:
+        return 50
 
 
 @dataclass
@@ -39,7 +47,7 @@ _events: dict[str, deque[HeartbeatEvent]] = {}
 
 def _get_events(agent_id: str) -> deque[HeartbeatEvent]:
     if agent_id not in _events:
-        _events[agent_id] = deque(maxlen=MAX_EVENTS_PER_AGENT)
+        _events[agent_id] = deque(maxlen=_get_max_events_per_agent())
     return _events[agent_id]
 
 

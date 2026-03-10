@@ -17,10 +17,52 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(message
 logger = logging.getLogger(__name__)
 
 
+def _setup_logging_from_config() -> None:
+    """根据配置设置日志文件轮转"""
+    from config import get_config
+    from logging.handlers import RotatingFileHandler
+
+    cfg = get_config()
+    app_cfg = cfg.get("app", {})
+
+    # 设置日志级别
+    log_level = app_cfg.get("logLevel", "info").upper()
+    logging.getLogger().setLevel(getattr(logging, log_level, logging.INFO))
+
+    # 配置文件日志
+    log_file_cfg = app_cfg.get("logFile", {})
+    if log_file_cfg.get("enabled", True):
+        max_bytes = log_file_cfg.get("maxBytes", 10 * 1024 * 1024)  # 默认10MB
+        backup_count = log_file_cfg.get("backupCount", 5)
+
+        log_dir = DATA_DIR / "logs"
+        log_dir.mkdir(parents=True, exist_ok=True)
+        log_file = log_dir / "app.log"
+
+        # 检查是否已有文件处理器
+        root_logger = logging.getLogger()
+        has_file_handler = any(
+            isinstance(h, RotatingFileHandler) for h in root_logger.handlers
+        )
+        if not has_file_handler:
+            file_handler = RotatingFileHandler(
+                log_file,
+                maxBytes=max_bytes,
+                backupCount=backup_count,
+                encoding="utf-8",
+            )
+            file_handler.setFormatter(
+                logging.Formatter("%(asctime)s [%(name)s] %(levelname)s: %(message)s")
+            )
+            root_logger.addHandler(file_handler)
+            logger.info(f"File logging enabled: {log_file} (maxBytes={max_bytes}, backupCount={backup_count})")
+
+
 @asynccontextmanager
 async def lifespan(application: FastAPI):
     """启动时初始化：配置、技能扫描、Agent 引擎、Heartbeat、技能热加载"""
     load_config()
+    _setup_logging_from_config()
 
     from graph.agent import agent_manager
     scan_all_skills()

@@ -434,7 +434,9 @@ class AgentManager:
                         ],
                     }
                     # 限制检索结果总长度，避免上下文过大
-                    max_context_chars = 5000
+                    from config import get_config
+                    cfg = get_config()
+                    max_context_chars = cfg.get("agents", {}).get("defaults", {}).get("memorySearch", {}).get("maxContextChars", 5000)
                     context_parts = ["[记忆检索结果]"]
                     total_chars = 0
                     for r in results:

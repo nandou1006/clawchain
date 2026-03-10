@@ -6,12 +6,20 @@ import time
 from collections import deque
 from typing import Any
 
-MAX_EVENTS = 20
+
+def _get_max_events() -> int:
+    """从配置获取系统事件队列大小"""
+    try:
+        from config import get_config
+        cfg = get_config()
+        return cfg.get("app", {}).get("systemEvents", {}).get("maxEvents", 20)
+    except Exception:
+        return 20
 
 
 class _SessionQueue:
     def __init__(self) -> None:
-        self.queue: deque[dict[str, Any]] = deque(maxlen=MAX_EVENTS)
+        self.queue: deque[dict[str, Any]] = deque(maxlen=_get_max_events())
         self.last_text: str | None = None
         self.last_context_key: str | None = None
 
