@@ -805,34 +805,55 @@ class SessionManager:
 
     DERIVED_TITLE_MAX_LEN = 60
 
+    def _get_title_max_len(self) -> int:
+        """从配置获取标题最大长度"""
+        try:
+            cfg = get_config()
+            return cfg.get("session", {}).get("titleMaxLen", 60)
+        except Exception:
+            return 60
+
     def derive_session_title(
         self, data: dict[str, Any] | None, session_id: str = "", updated_at: float | None = None
     ) -> str:
         """从 label/displayName/subject/首条真实用户消息或 session_id 推导标题"""
+        max_len = self._get_title_max_len()
+
         if not data:
             return "未命名"
         label = str(data.get("label", "")).strip()
         if label and not self._is_bootstrap_text(label):
-            return label[: self.DERIVED_TITLE_MAX_LEN]
+            return label[:max_len]
         if data.get("displayName", "").strip():
-            return data["displayName"].strip()[: self.DERIVED_TITLE_MAX_LEN]
+            return data["displayName"].strip()[:max_len]
         if data.get("subject", "").strip():
-            return data["subject"].strip()[: self.DERIVED_TITLE_MAX_LEN]
+            return data["subject"].strip()[:max_len]
         for msg in data.get("messages", []):
             if msg.get("role") == "user" and msg.get("content", "").strip():
                 text = " ".join(str(msg.get("content", "")).split()).strip()
                 lowered = text.lower()
                 if any(lowered.startswith(prefix) for prefix in self._SESSION_BOOTSTRAP_PREFIXES):
                     continue
-                if text.startswith("/new") or text.startswith("/reset"):
+                # 跳过更多特殊前缀
+                if text.startswith("/"):  # 所有命令
                     continue
-                if len(text) > self.DERIVED_TITLE_MAX_LEN:
-                    cut = text[: self.DERIVED_TITLE_MAX_LEN - 1]
+                if text.startswith("http://") or text.startswith("https://"):  # URL
+                    continue
+
+                # 更好的截断：优先在标点符号处截断
+                if len(text) > max_len:
+                    # 尝试在标点符号处截断
+                    for sep in ["。", ".", "！", "!", "？", "?", ";", "；", "\n"]:
+                        idx = text.find(sep, max_len // 2)
+                        if 0 < idx <= max_len:
+                            return text[:idx].strip() + "…"
+
+                    # 没有合适的标点，在空格处截断
+                    cut = text[:max_len - 1]
                     last_space = cut.rfind(" ")
-                    if last_space > self.DERIVED_TITLE_MAX_LEN * 0.6:
-                        text = cut[:last_space] + "…"
-                    else:
-                        text = cut + "…"
+                    if last_space > max_len * 0.6:
+                        return cut[:last_space] + "…"
+                    return cut + "…"
                 return text or "未命名"
         if session_id and updated_at:
             return f"{session_id} @ {int(updated_at)}"

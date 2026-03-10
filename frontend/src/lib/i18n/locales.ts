@@ -99,6 +99,19 @@ export interface Messages {
   labelLoopCircuitBreaker: string;
   labelLoopHistorySize: string;
 
+  // Agent State Persist
+  statePersistEnabled: string;
+  statePersistInterval: string;
+  statePersistHint: string;
+
+  // Approval timeout
+  approvalTimeoutLabel: string;
+  approvalTimeoutHint: string;
+
+  // Session title
+  sessionTitleMaxLen: string;
+  sessionTitleMaxLenHint: string;
+
   // AgentCard / Config form
   inheritDefault: string;
   heartbeatEnabled: string;
@@ -331,6 +344,19 @@ export const zhCN: Messages = {
   labelLoopCircuitBreaker: "熔断阈值",
   labelLoopHistorySize: "历史记录大小",
 
+  // Agent State Persist
+  statePersistEnabled: "启用状态持久化",
+  statePersistInterval: "自动保存间隔(分钟)",
+  statePersistHint: "运行时状态(think_level, verbose等)定期保存到磁盘",
+
+  // Approval timeout
+  approvalTimeoutLabel: "审批请求超时(秒)",
+  approvalTimeoutHint: "审批请求在队列中保持的最大时间，超时自动拒绝",
+
+  // Session title
+  sessionTitleMaxLen: "会话标题最大长度",
+  sessionTitleMaxLenHint: "自动推导的会话标题最大字符数",
+
   inputPlaceholder: "输入消息... / 输入斜杠查看命令",
   sendHint: "Enter 发送 · Shift+Enter 换行 · /命令",
   denied: "已拒绝执行该操作",
@@ -532,6 +558,19 @@ export const enUS: Messages = {
   labelLoopCriticalThreshold: "Critical Threshold",
   labelLoopCircuitBreaker: "Circuit Breaker",
   labelLoopHistorySize: "History Size",
+
+  // Agent State Persist
+  statePersistEnabled: "Enable State Persistence",
+  statePersistInterval: "Auto-save Interval (minutes)",
+  statePersistHint: "Periodically save runtime state (think_level, verbose, etc.) to disk",
+
+  // Approval timeout
+  approvalTimeoutLabel: "Approval Timeout (seconds)",
+  approvalTimeoutHint: "Maximum time an approval request stays in queue before auto-denied",
+
+  // Session title
+  sessionTitleMaxLen: "Session Title Max Length",
+  sessionTitleMaxLenHint: "Maximum characters for auto-derived session titles",
 
   inputPlaceholder: "Type a message... / Type slash for commands",
   sendHint: "Enter to send · Shift+Enter for newline · /commands",

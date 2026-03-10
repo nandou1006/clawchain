@@ -27,10 +27,18 @@ class PendingApproval:
 class ApprovalStore:
     """内存态 approval 存储，支持 create/wait/resolve"""
 
-    def __init__(self, default_timeout: float = 300) -> None:
+    def __init__(self) -> None:
         self._pending: dict[str, PendingApproval] = {}
         self._lock = asyncio.Lock()
-        self._default_timeout = default_timeout
+
+    def _get_timeout_from_config(self) -> float:
+        """从配置获取审批请求过期时间"""
+        try:
+            from config import get_config
+            cfg = get_config()
+            return cfg.get("tools", {}).get("exec", {}).get("approval", {}).get("pending_timeout_seconds", 300)
+        except Exception:
+            return 300
 
     def create(self, agent_id: str, tool: str, input_preview: str) -> str:
         """创建待确认请求，返回 approval_id"""
@@ -50,14 +58,23 @@ class ApprovalStore:
 
     def _cleanup_expired(self) -> None:
         """清理已过期的审批请求"""
+        timeout = self._get_timeout_from_config()
         now = time.time()
         expired = [
             aid for aid, p in self._pending.items()
-            if now - p.created_at > self._default_timeout
+            if now - p.created_at > timeout
         ]
         for aid in expired:
             logger.warning(f"Cleaning up expired approval: {aid}")
             self._pending.pop(aid, None)
+
+    def is_expired(self, approval_id: str) -> bool:
+        """检查审批请求是否已过期"""
+        pending = self._pending.get(approval_id)
+        if not pending:
+            return True
+        timeout = self._get_timeout_from_config()
+        return time.time() - pending.created_at > timeout
 
     async def wait(
         self, approval_id: str, timeout_seconds: float = 60

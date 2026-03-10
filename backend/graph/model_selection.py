@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import logging
+import traceback
 from dataclasses import dataclass
 from typing import Any, AsyncGenerator, Callable, Awaitable, TypeVar
 
@@ -19,6 +20,7 @@ from graph.models_config import (
     parse_model_ref,
 )
 from graph.errors import is_likely_context_overflow_error, resolve_failover_reason_from_error
+from graph.audit_log import audit_logger
 
 logger = logging.getLogger(__name__)
 
@@ -231,12 +233,15 @@ async def run_with_fallback(
 async def run_with_fallback_stream(
     candidates: list[ModelRef],
     run_fn: Callable[[str, str], AsyncGenerator[T, None]],
+    agent_id: str = "",
 ) -> AsyncGenerator[T, None]:
     """流式 Fallback：按序尝试候选模型，yield 事件，失败则换下一个。
 
     Context overflow 直接 rethrow。
     """
     last_error: Exception | None = None
+    fallback_chain: list[str] = [str(c) for c in candidates]
+
     for i, candidate in enumerate(candidates):
         try:
             async for item in run_fn(candidate.provider, candidate.model):
@@ -248,12 +253,40 @@ async def run_with_fallback_stream(
             if is_likely_context_overflow_error(error_msg):
                 raise
             reason = resolve_failover_reason_from_error(e)
+
+            # 记录详细的 audit log
+            if agent_id:
+                audit_logger.log(
+                    agent_id,
+                    "model_fallback",
+                    {
+                        "from_model": str(candidate),
+                        "error_type": type(e).__name__,
+                        "error_detail": error_msg,
+                        "reason": reason,
+                        "attempt": i + 1,
+                        "total": len(candidates),
+                        "fallback_chain": fallback_chain,
+                    }
+                )
+
             logger.warning(
                 f"Model fallback [{i+1}/{len(candidates)}]: "
                 f"{candidate} failed ({reason or 'unknown'}): {error_msg[:200]}"
             )
 
+    # 所有模型都失败
     summary = f"All {len(candidates)} model candidates failed"
+    if agent_id:
+        audit_logger.log(
+            agent_id,
+            "model_fallback_all_failed",
+            {
+                "fallback_chain": fallback_chain,
+                "last_error_type": type(last_error).__name__ if last_error else None,
+                "last_error": str(last_error)[:500] if last_error else None,
+            }
+        )
     raise RuntimeError(summary) from last_error
 
 

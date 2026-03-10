@@ -8,6 +8,7 @@ import logging
 import re
 from dataclasses import dataclass, field
 from datetime import datetime
+from pathlib import Path
 from typing import Any, AsyncGenerator
 
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
@@ -95,6 +96,58 @@ class AgentState:
     def invalidate_tools(self) -> None:
         self._tools_cache = None
 
+    def to_dict(self) -> dict[str, Any]:
+        """转换为字典，用于持久化"""
+        return {
+            "agent_id": self.agent_id,
+            "compaction_count": self.compaction_count,
+            "total_input_tokens": self.total_input_tokens,
+            "total_output_tokens": self.total_output_tokens,
+            "total_turns": self.total_turns,
+            "think_level": self.think_level,
+            "verbose": self.verbose,
+            "reasoning": self.reasoning,
+            "last_active": self.last_active,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "AgentState":
+        """从字典恢复状态"""
+        return cls(
+            agent_id=data.get("agent_id", ""),
+            compaction_count=data.get("compaction_count", 0),
+            total_input_tokens=data.get("total_input_tokens", 0),
+            total_output_tokens=data.get("total_output_tokens", 0),
+            total_turns=data.get("total_turns", 0),
+            think_level=data.get("think_level", 0),
+            verbose=data.get("verbose", False),
+            reasoning=data.get("reasoning", False),
+            last_active=data.get("last_active", 0.0),
+        )
+
+    def save_to_disk(self, path: Path) -> None:
+        """保存状态到磁盘"""
+        try:
+            data = self.to_dict()
+            path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+            logger.debug(f"AgentState saved for {self.agent_id}")
+        except Exception as e:
+            logger.warning(f"Failed to save AgentState for {self.agent_id}: {e}")
+
+    @classmethod
+    def load_from_disk(cls, path: Path, agent_id: str) -> "AgentState":
+        """从磁盘加载状态"""
+        try:
+            if path.exists():
+                data = json.loads(path.read_text(encoding="utf-8"))
+                state = cls.from_dict(data)
+                state.agent_id = agent_id  # 确保 agent_id 正确
+                logger.debug(f"AgentState loaded for {agent_id}")
+                return state
+        except Exception as e:
+            logger.warning(f"Failed to load AgentState for {agent_id}: {e}")
+        return cls(agent_id=agent_id)
+
 
 # ---------------------------------------------------------------------------
 # 生命周期钩子
@@ -164,6 +217,44 @@ class AgentManager:
         self._main_loop: asyncio.AbstractEventLoop | None = None
         self.lifecycle_hooks: LifecycleHooks | None = None  # 可选扩展点
         self._pending_tasks: set[asyncio.Task] = set()  # 跟踪后台任务，确保关闭前完成
+        self._state_save_tasks: dict[str, asyncio.Task] = {}  # 状态保存任务
+
+    def _get_state_persist_config(self, agent_id: str) -> tuple[bool, int]:
+        """获取状态持久化配置 (enabled, interval_minutes)"""
+        try:
+            from config import resolve_agent_config
+            cfg = resolve_agent_config(agent_id)
+            persist_cfg = cfg.get("statePersist", {})
+            return (
+                persist_cfg.get("enabled", True),
+                persist_cfg.get("autoSaveIntervalMinutes", 5),
+            )
+        except Exception:
+            return True, 5
+
+    def _get_state_path(self, agent_id: str) -> Path:
+        """获取状态文件路径"""
+        agent_dir = resolve_agent_dir(agent_id)
+        return agent_dir / "agent_state.json"
+
+    async def _periodic_state_save(self, agent_id: str) -> None:
+        """定期保存 Agent 状态"""
+        enabled, interval = self._get_state_persist_config(agent_id)
+        if not enabled:
+            return
+
+        interval_seconds = max(60, interval * 60)  # 至少1分钟
+        while self._initialized:
+            try:
+                await asyncio.sleep(interval_seconds)
+                if agent_id in self._states:
+                    state = self._states[agent_id]
+                    state_path = self._get_state_path(agent_id)
+                    state.save_to_disk(state_path)
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.warning(f"Periodic state save error for {agent_id}: {e}")
 
     async def initialize(self, data_dir: str) -> None:
         self.data_dir = data_dir
@@ -181,9 +272,19 @@ class AgentManager:
             engine.rebuild_index()
             engine.start_watching()
             self.memory_search_engines[agent_id] = engine
-            from graph.thinking import resolve_agent_think_default
-            think_level = resolve_agent_think_default(agent_id)
-            self._states[agent_id] = AgentState(agent_id=agent_id, think_level=think_level.value)
+
+            # 从磁盘加载状态或创建新状态
+            enabled, _ = self._get_state_persist_config(agent_id)
+            if enabled:
+                state_path = self._get_state_path(agent_id)
+                self._states[agent_id] = AgentState.load_from_disk(state_path, agent_id)
+                # 启动定期保存任务
+                save_task = asyncio.create_task(self._periodic_state_save(agent_id))
+                self._state_save_tasks[agent_id] = save_task
+            else:
+                from graph.thinking import resolve_agent_think_default
+                think_level = resolve_agent_think_default(agent_id)
+                self._states[agent_id] = AgentState(agent_id=agent_id, think_level=think_level.value)
 
         self._initialized = True
 
@@ -231,6 +332,14 @@ class AgentManager:
 
     async def wait_for_pending_tasks(self, timeout: float = 30.0) -> None:
         """等待所有后台任务完成，用于应用关闭前确保数据不丢失"""
+        # 先保存所有 Agent 状态
+        await self._save_all_states()
+
+        # 取消状态保存任务
+        for task in self._state_save_tasks.values():
+            task.cancel()
+        self._state_save_tasks.clear()
+
         if not self._pending_tasks:
             return
         logger.info(f"等待 {len(self._pending_tasks)} 个后台任务完成...")
@@ -244,6 +353,17 @@ class AgentManager:
             logger.warning(f"等待后台任务超时（{timeout}秒），部分任务可能未完成")
         except Exception as e:
             logger.error(f"等待后台任务时出错: {e}")
+
+    async def _save_all_states(self) -> None:
+        """保存所有 Agent 状态到磁盘"""
+        for agent_id, state in self._states.items():
+            try:
+                enabled, _ = self._get_state_persist_config(agent_id)
+                if enabled:
+                    state_path = self._get_state_path(agent_id)
+                    state.save_to_disk(state_path)
+            except Exception as e:
+                logger.warning(f"Failed to save state for {agent_id}: {e}")
 
     def _build_tools(self, agent_id: str, session_id: str = "") -> list:
         workspace = str(resolve_agent_workspace(agent_id))
@@ -700,7 +820,7 @@ class AgentManager:
         # 外层循环：瞬时 HTTP 重试、压缩失败/role ordering/session 损坏恢复
         while True:
             try:
-                async for evt in run_with_fallback_stream(candidates, run_for_model):
+                async for evt in run_with_fallback_stream(candidates, run_for_model, agent_id):
                     yield evt
                 break
             except Exception as e:

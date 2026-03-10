@@ -164,6 +164,12 @@ class ToolsPolicyConfig(BaseModel):
 # Agent Defaults
 # ---------------------------------------------------------------------------
 
+class AgentStatePersistConfig(BaseModel):
+    """Agent 状态持久化配置"""
+    enabled: bool = True  # 是否启用状态持久化
+    autoSaveIntervalMinutes: int = Field(default=5, ge=1, le=60)  # 自动保存间隔
+
+
 class AgentDefaultsConfig(BaseModel):
     model: Optional[str] = None
     user_timezone: str = "Asia/Shanghai"
@@ -178,6 +184,7 @@ class AgentDefaultsConfig(BaseModel):
     heartbeat: HeartbeatConfig = Field(default_factory=HeartbeatConfig)
     memorySearch: MemorySearchConfig = Field(default_factory=MemorySearchConfig)
     tools: Optional[ToolsPolicyConfig] = None
+    statePersist: AgentStatePersistConfig = Field(default_factory=AgentStatePersistConfig)
 
     model_config = {"populate_by_name": True}
 
@@ -238,6 +245,7 @@ class ExecApprovalConfig(BaseModel):
     security: Literal["deny", "allowlist", "full"] = "allowlist"
     ask: Literal["off", "on_miss", "always"] = "on_miss"
     ask_timeout_seconds: int = 60
+    pending_timeout_seconds: int = Field(default=300, ge=60, le=3600)  # 审批请求在队列中的最大存活时间
     allowlist: list[str] = Field(default_factory=list)
 
 
@@ -277,6 +285,7 @@ class SessionMaintenanceConfig(BaseModel):
 
 class SessionConfig(BaseModel):
     maintenance: SessionMaintenanceConfig = Field(default_factory=SessionMaintenanceConfig)
+    titleMaxLen: int = Field(default=60, ge=20, le=120)  # 会话标题最大长度
 
 
 # ---------------------------------------------------------------------------

@@ -746,6 +746,12 @@ export default function ConfigModal() {
                 )}
               </Section>
 
+              {/* Agent State Persist */}
+              <Section title="状态持久化" icon={<Database className="w-3.5 h-3.5" style={{ color: "var(--text-secondary)" }} />} defaultOpen={false}>
+                <Toggle label={t.statePersistEnabled} value={defaults.statePersist?.enabled !== false} onChange={(v) => handleUpdate("agents.defaults.statePersist", { ...(defaults.statePersist || {}), enabled: v })} />
+                <Input label={t.statePersistInterval} value={String(defaults.statePersist?.autoSaveIntervalMinutes ?? 5)} onChange={(v) => handleUpdate("agents.defaults.statePersist", { ...(defaults.statePersist || {}), autoSaveIntervalMinutes: parseInt(v) || 5 })} type="number" hint={t.statePersistHint} />
+              </Section>
+
               {/* Web Search */}
               <Section title="网络搜索" icon={<Search className="w-3.5 h-3.5" style={{ color: "var(--text-secondary)" }} />} defaultOpen={false}>
                 <Select label="搜索后端" value={webSearch.provider || "duckduckgo"} options={[
@@ -768,6 +774,7 @@ export default function ConfigModal() {
                 ]} onChange={(v) => handleUpdate("session.maintenance.mode", v)} />
                 <Input label="过期时长" value={sessionMaint.pruneAfter || "30d"} onChange={(v) => handleUpdate("session.maintenance.pruneAfter", v)} hint="如 30d、7d" />
                 <Input label="最大会话数" value={String(sessionMaint.maxEntries ?? 500)} onChange={(v) => handleUpdate("session.maintenance.maxEntries", parseInt(v) || 500)} type="number" />
+                <Input label={t.sessionTitleMaxLen} value={String(config.session?.titleMaxLen ?? 60)} onChange={(v) => handleUpdate("session.titleMaxLen", parseInt(v) || 60)} type="number" hint={t.sessionTitleMaxLenHint} />
                 <div className="pt-2 mt-2" style={{ borderTop: "1px solid var(--border)" }}>
                   <Toggle label="启用自动压缩" value={autoCompaction.enabled !== false} onChange={(v) => handleUpdate("auto_compaction.enabled", v)} />
                   <Input label="压缩阈值 (tokens)" value={String(autoCompaction.threshold_tokens || 80000)} onChange={(v) => handleUpdate("auto_compaction.threshold_tokens", parseInt(v) || 80000)} type="number" />
@@ -782,6 +789,7 @@ export default function ConfigModal() {
                   { value: "on_miss", label: t.execConfirmOnMiss },
                   { value: "always", label: t.execConfirmAlways },
                 ]} onChange={(v) => handleUpdate("tools.exec.approval", { ...(config.tools?.exec?.approval || {}), ask: v })} hint={t.execConfirmHint} />
+                <Input label={t.approvalTimeoutLabel} value={String(config.tools?.exec?.approval?.pending_timeout_seconds ?? 300)} onChange={(v) => handleUpdate("tools.exec.approval", { ...(config.tools?.exec?.approval || {}), pending_timeout_seconds: parseInt(v) || 300 })} type="number" hint={t.approvalTimeoutHint} />
                 <Select label="沙箱模式" value={config.sandbox?.mode || "soft"} options={[
                   { value: "off", label: "关闭 — 不做额外安全检查" },
                   { value: "soft", label: "软沙箱 — 路径限制 + 命令黑名单" },

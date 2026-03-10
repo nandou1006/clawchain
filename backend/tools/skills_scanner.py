@@ -37,7 +37,8 @@ def _parse_skill_frontmatter(skill_md_path: Path) -> dict[str, str] | None:
     """解析 SKILL.md 的 YAML frontmatter"""
     try:
         text = skill_md_path.read_text(encoding="utf-8")
-    except Exception:
+    except Exception as e:
+        logger.warning(f"Failed to read {skill_md_path}: {e}")
         return None
 
     if not text.startswith("---"):
