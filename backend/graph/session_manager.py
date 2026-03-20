@@ -66,8 +66,8 @@ class SessionManager:
         lowered = raw.lower()
         return any(lowered.startswith(prefix) for prefix in self._SESSION_BOOTSTRAP_PREFIXES)
 
-    def _get_lock(self, session_id: str, agent_id: str) -> threading.Lock:
-        key = f"{agent_id}:{session_id}"
+    def _get_lock(self, session_id: str, agent_id: str, user_id: str = "default") -> threading.Lock:
+        key = f"{agent_id}:{user_id}:{session_id}"
         with self._locks_guard:
             if key not in self._locks:
                 self._locks[key] = threading.Lock()
@@ -89,7 +89,7 @@ class SessionManager:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def resolve_main_session_id(agent_id: str) -> str:
+    def resolve_main_session_id(agent_id: str, user_id: str = "") -> str:
         """返回 Agent 的固定主会话 ID（用于文件命名）"""
         return f"{agent_id}-main"
 
@@ -121,16 +121,17 @@ class SessionManager:
     # 读取
     # ------------------------------------------------------------------
 
-    def _session_path(self, session_id: str, agent_id: str) -> Path:
-        return resolve_agent_sessions_dir(agent_id) / f"{session_id}.json"
+    def _session_path(self, session_id: str, agent_id: str, user_id: str = "default") -> Path:
+        return resolve_agent_sessions_dir(agent_id, user_id) / f"{session_id}.json"
 
-    def load_session(self, session_id: str, agent_id: str) -> dict[str, Any] | None:
-        cache_key = f"{agent_id}:{session_id}"
+    def load_session(self, session_id: str, agent_id: str, user_id: str = "default") -> dict[str, Any] | None:
+        effective_user_id = user_id or "default"
+        cache_key = f"{agent_id}:{effective_user_id}:{session_id}"
         cached = self._cache.get(cache_key)
         if cached is not None:
             return cached
 
-        path = self._session_path(session_id, agent_id)
+        path = self._session_path(session_id, agent_id, effective_user_id)
         if not path.exists():
             return None
         try:
@@ -160,14 +161,14 @@ class SessionManager:
             return None
 
     def load_session_for_agent(
-        self, session_id: str, agent_id: str
+        self, session_id: str, agent_id: str, user_id: str = "default"
     ) -> list[dict[str, Any]]:
         """
         为 LLM 优化的消息列表：
         - 合并连续 assistant 消息
         - 在头部注入 compressed_context
         """
-        data = self.load_session(session_id, agent_id)
+        data = self.load_session(session_id, agent_id, user_id)
         if data is None:
             return []
 
@@ -200,10 +201,12 @@ class SessionManager:
         self,
         session_id: str,
         agent_id: str,
+        user_id: str = "default",
         spawned_by: str | None = None,
         label: str | None = None,
     ) -> dict[str, Any]:
-        data = self.load_session(session_id, agent_id)
+        effective_user_id = user_id or "default"
+        data = self.load_session(session_id, agent_id, effective_user_id)
         if data is not None:
             return data
         if not spawned_by and session_id.startswith("subagent-"):
@@ -227,21 +230,22 @@ class SessionManager:
             data["label"] = str(label).strip()[:120]
         if spawned_by:
             data["spawned_by"] = spawned_by
-        self._save_session_data(session_id, agent_id, data)
+        self._save_session_data(session_id, agent_id, data, effective_user_id)
         self._update_session_store_entry(
             agent_id,
             self.session_key_from_session_id(agent_id, session_id),
             session_id,
             data["updated_at"],
+            user_id=effective_user_id,
             label=data.get("label", ""),
             spawned_by=spawned_by,
         )
         self._emit_lifecycle("session_create", agent_id, session_id)
         return data
 
-    def rollback_last_turn(self, session_id: str, agent_id: str) -> bool:
+    def rollback_last_turn(self, session_id: str, agent_id: str, user_id: str = "default") -> bool:
         """移除最后一轮 user + assistant 消息（用于心跳 HEARTBEAT_OK 时不持久化）"""
-        data = self.load_session(session_id, agent_id)
+        data = self.load_session(session_id, agent_id, user_id)
         if not data or not data.get("messages"):
             return False
         msgs = data["messages"]
@@ -253,7 +257,7 @@ class SessionManager:
             return False
         data["messages"] = msgs[:-2]
         data["updated_at"] = time.time()
-        self._save_session_data(session_id, agent_id, data)
+        self._save_session_data(session_id, agent_id, data, user_id)
         return True
 
     def save_message(
@@ -263,22 +267,24 @@ class SessionManager:
         role: str,
         content: str,
         tool_calls: list[dict[str, Any]] | None = None,
+        user_id: str = "default",
     ) -> None:
-        data = self.ensure_session(session_id, agent_id)
+        effective_user_id = user_id or "default"
+        data = self.ensure_session(session_id, agent_id, effective_user_id)
         msg: dict[str, Any] = {"role": role, "content": content}
         if tool_calls:
             msg["tool_calls"] = tool_calls
         data["messages"].append(msg)
         data["updated_at"] = time.time()
-        self._save_session_data(session_id, agent_id, data)
+        self._save_session_data(session_id, agent_id, data, effective_user_id)
 
-    def _session_store_path(self, agent_id: str) -> Path:
+    def _session_store_path(self, agent_id: str, user_id: str = "default") -> Path:
         """sessions.json 索引路径"""
-        return resolve_agent_sessions_dir(agent_id) / "sessions.json"
+        return resolve_agent_sessions_dir(agent_id, user_id) / "sessions.json"
 
-    def _load_session_store(self, agent_id: str) -> dict[str, dict[str, Any]]:
+    def _load_session_store(self, agent_id: str, user_id: str = "default") -> dict[str, dict[str, Any]]:
         """加载 sessions.json 索引"""
-        path = self._session_store_path(agent_id)
+        path = self._session_store_path(agent_id, user_id)
         if not path.exists():
             return {}
         try:
@@ -289,10 +295,10 @@ class SessionManager:
             return {}
 
     def _save_session_store(
-        self, agent_id: str, store: dict[str, dict[str, Any]]
+        self, agent_id: str, store: dict[str, dict[str, Any]], user_id: str = "default"
     ) -> None:
         """持久化 sessions.json"""
-        path = self._session_store_path(agent_id)
+        path = self._session_store_path(agent_id, user_id)
         path.parent.mkdir(parents=True, exist_ok=True)
         with open(path, "w", encoding="utf-8") as f:
             json.dump(store, f, ensure_ascii=False, indent=2)
@@ -303,11 +309,13 @@ class SessionManager:
         session_key: str,
         session_id: str,
         updated_at: float,
+        user_id: str = "default",
         label: str = "",
         spawned_by: str | None = None,
     ) -> None:
         """更新 sessions.json 中的会话条目，并在 mode=enforce 时执行 maintenance"""
-        store = self._load_session_store(agent_id)
+        effective_user_id = user_id or "default"
+        store = self._load_session_store(agent_id, effective_user_id)
         entry = store.get(session_key, {})
         entry["sessionId"] = session_id
         entry["updatedAt"] = int(updated_at * 1000)
@@ -320,14 +328,15 @@ class SessionManager:
         if spawned_by:
             entry["spawnedBy"] = spawned_by
         store[session_key] = entry
-        store, _ = self._run_session_maintenance(agent_id, store=store, enforce=False)
-        self._save_session_store(agent_id, store)
+        store, _ = self._run_session_maintenance(agent_id, effective_user_id, store=store, enforce=False)
+        self._save_session_store(agent_id, store, effective_user_id)
 
-    def _remove_session_store_entry(self, agent_id: str, session_key: str) -> None:
+    def _remove_session_store_entry(self, agent_id: str, session_key: str, user_id: str = "default") -> None:
         """从 sessions.json 移除会话"""
-        store = self._load_session_store(agent_id)
+        effective_user_id = user_id or "default"
+        store = self._load_session_store(agent_id, effective_user_id)
         store.pop(session_key, None)
-        self._save_session_store(agent_id, store)
+        self._save_session_store(agent_id, store, effective_user_id)
 
     def _parse_byte_size(self, raw: str | int | float | None, default_unit: str = "b") -> int | None:
         """解析字节大小，如 '500mb'、'1gb'。支持 b/kb/mb/gb。返回 None 表示无效或未设置。"""
@@ -376,13 +385,14 @@ class SessionManager:
         return max_bytes, high_bytes
 
     def _enforce_disk_budget(
-        self, agent_id: str, store: dict, dry_run: bool = False
+        self, agent_id: str, user_id: str, store: dict, dry_run: bool = False
     ) -> dict[str, Any] | None:
         """按 updatedAt 从最旧开始删除直到低于 highWaterBytes"""
         max_bytes, high_bytes = self._resolve_disk_budget()
         if max_bytes is None or high_bytes is None:
             return None
-        sessions_dir = resolve_agent_sessions_dir(agent_id)
+        effective_user_id = user_id or "default"
+        sessions_dir = resolve_agent_sessions_dir(agent_id, effective_user_id)
         if not sessions_dir.exists():
             return {"totalBytesBefore": 0, "totalBytesAfter": 0, "removedFiles": 0, "removedEntries": 0, "freedBytes": 0, "maxBytes": max_bytes, "highWaterBytes": high_bytes, "overBudget": False}
 
@@ -456,7 +466,7 @@ class SessionManager:
             sid = entry.get("sessionId")
             if not sid:
                 continue
-            path_f = self._session_path(sid, agent_id)
+            path_f = self._session_path(sid, agent_id, effective_user_id)
             size = 0
             if path_f.exists():
                 try:
@@ -476,7 +486,7 @@ class SessionManager:
                 removed_files += 1
 
         if not dry_run and removed_entries:
-            self._save_session_store(agent_id, store)
+            self._save_session_store(agent_id, store, effective_user_id)
 
         return {
             "totalBytesBefore": total_before,
@@ -508,16 +518,17 @@ class SessionManager:
         return num * 1000
 
     def _run_session_maintenance(
-        self, agent_id: str, store: dict | None = None, enforce: bool = False, dry_run: bool = False
+        self, agent_id: str, user_id: str = "default", store: dict | None = None, enforce: bool = False, dry_run: bool = False
     ) -> tuple[dict, dict[str, Any]]:
         """prune 过期 + cap 超限 + 磁盘预算。返回 (store, report)"""
+        effective_user_id = user_id or "default"
         if store is None:
-            store = self._load_session_store(agent_id)
+            store = self._load_session_store(agent_id, effective_user_id)
         cfg = get_config()
         maint = (cfg.get("session") or {}).get("maintenance") or {}
         mode = maint.get("mode", "warn")
         if not enforce and not dry_run and mode == "warn":
-            disk_budget = self._enforce_disk_budget(agent_id, store, dry_run=True)
+            disk_budget = self._enforce_disk_budget(agent_id, effective_user_id, store, dry_run=True)
             return store, {"pruned": 0, "capped": 0, "diskBudget": disk_budget}
         prune_after_ms = self._parse_prune_after_ms()
         max_entries = int(maint.get("maxEntries", 500))
@@ -560,21 +571,22 @@ class SessionManager:
                                 pass
                 store.pop(key, None)
             if to_remove:
-                self._save_session_store(agent_id, store)
+                self._save_session_store(agent_id, store, effective_user_id)
 
-        disk_budget = self._enforce_disk_budget(agent_id, store, dry_run=dry_run)
+        disk_budget = self._enforce_disk_budget(agent_id, effective_user_id, store, dry_run=dry_run)
         return store, {"pruned": pruned, "capped": capped, "diskBudget": disk_budget}
 
     def _save_session_data(
-        self, session_id: str, agent_id: str, data: dict[str, Any]
+        self, session_id: str, agent_id: str, data: dict[str, Any], user_id: str = "default"
     ) -> None:
-        lock = self._get_lock(session_id, agent_id)
+        effective_user_id = user_id or "default"
+        lock = self._get_lock(session_id, agent_id, effective_user_id)
         with lock:
-            path = self._session_path(session_id, agent_id)
+            path = self._session_path(session_id, agent_id, effective_user_id)
             path.parent.mkdir(parents=True, exist_ok=True)
             with open(path, "w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
-            cache_key = f"{agent_id}:{session_id}"
+            cache_key = f"{agent_id}:{effective_user_id}:{session_id}"
             self._cache.put(cache_key, data)
             session_key = self.session_key_from_session_id(agent_id, session_id)
             self._update_session_store_entry(
@@ -582,6 +594,7 @@ class SessionManager:
                 session_key,
                 session_id,
                 data.get("updated_at", time.time()),
+                user_id=effective_user_id,
                 label=data.get("label", ""),
                 spawned_by=data.get("spawned_by"),
             )
@@ -593,18 +606,20 @@ class SessionManager:
     def list_sessions(
         self,
         agent_id: str,
+        user_id: str = "default",
         spawned_by_session_key: str | None = None,
     ) -> list[dict[str, Any]]:
         """列出会话。优先从 sessions.json 索引读取并按 updatedAt 排序。
         spawned_by_session_key: 仅返回该 requester 派生的子会话。"""
-        sessions_dir = resolve_agent_sessions_dir(agent_id)
-        store = self._load_session_store(agent_id)
+        effective_user_id = user_id or "default"
+        sessions_dir = resolve_agent_sessions_dir(agent_id, effective_user_id)
+        store = self._load_session_store(agent_id, effective_user_id)
         main_sid = self.resolve_main_session_id(agent_id)
         main_key = self.session_key_from_session_id(agent_id, main_sid)
 
         # 确保主会话在 store 中
         if main_key not in store:
-            main_data = self.load_session(main_sid, agent_id)
+            main_data = self.load_session(main_sid, agent_id, effective_user_id)
             if main_data:
                 if isinstance(main_data, list):
                     main_data = {"messages": main_data, "label": "未命名"}
@@ -613,6 +628,7 @@ class SessionManager:
             self._update_session_store_entry(
                 agent_id, main_key, main_sid,
                 main_data.get("updated_at", time.time()),
+                user_id=effective_user_id,
                 label=main_data.get("label", "主会话"),
             )
             store[main_key] = {
@@ -644,6 +660,7 @@ class SessionManager:
                         self._update_session_store_entry(
                             agent_id, sk, session_id,
                             data.get("updated_at", fp.stat().st_mtime),
+                            user_id=effective_user_id,
                             label=data.get("label", ""),
                             spawned_by=spawned_by,
                         )
@@ -661,7 +678,7 @@ class SessionManager:
             if spawned_by_session_key and entry.get("spawnedBy") != spawned_by_session_key:
                 continue
             session_id = entry.get("sessionId", "")
-            data = self.load_session(session_id, agent_id)
+            data = self.load_session(session_id, agent_id, effective_user_id)
             if data is None and session_id != main_sid:
                 continue
             if data:
@@ -687,7 +704,8 @@ class SessionManager:
         result.sort(key=lambda x: (x.get("updated_at") or 0), reverse=True)
         return result
 
-    def create_session(self, agent_id: str, title: str = "新会话") -> str:
+    def create_session(self, agent_id: str, title: str = "新会话", user_id: str = "default") -> str:
+        effective_user_id = user_id or "default"
         session_id = uuid.uuid4().hex[:12]
         data = {
             "session_id": session_id,
@@ -699,37 +717,40 @@ class SessionManager:
         }
         if title and title.strip():
             data["label"] = title.strip()
-        self._save_session_data(session_id, agent_id, data)
+        self._save_session_data(session_id, agent_id, data, effective_user_id)
         return session_id
 
-    def rename_session(self, session_id: str, agent_id: str, title: str) -> bool:
-        data = self.load_session(session_id, agent_id)
+    def rename_session(self, session_id: str, agent_id: str, title: str, user_id: str = "default") -> bool:
+        effective_user_id = user_id or "default"
+        data = self.load_session(session_id, agent_id, effective_user_id)
         if data is None:
             return False
         data["label"] = title
         data["updated_at"] = time.time()
-        self._save_session_data(session_id, agent_id, data)
+        self._save_session_data(session_id, agent_id, data, effective_user_id)
         return True
 
     def set_memory_flush_compaction_count(
-        self, session_id: str, agent_id: str, count: int
+        self, session_id: str, agent_id: str, count: int, user_id: str = "default"
     ) -> None:
         """记录本压缩周期已执行 Memory Flush"""
-        data = self.load_session(session_id, agent_id)
+        effective_user_id = user_id or "default"
+        data = self.load_session(session_id, agent_id, effective_user_id)
         if data is None:
             return
         data["memory_flush_compaction_count"] = count
         data["updated_at"] = time.time()
-        self._save_session_data(session_id, agent_id, data)
+        self._save_session_data(session_id, agent_id, data, effective_user_id)
 
-    def delete_session(self, session_id: str, agent_id: str) -> bool:
-        path = self._session_path(session_id, agent_id)
+    def delete_session(self, session_id: str, agent_id: str, user_id: str = "default") -> bool:
+        effective_user_id = user_id or "default"
+        path = self._session_path(session_id, agent_id, effective_user_id)
         if path.exists():
             path.unlink()
-            cache_key = f"{agent_id}:{session_id}"
+            cache_key = f"{agent_id}:{effective_user_id}:{session_id}"
             self._cache.invalidate(cache_key)
             session_key = self.session_key_from_session_id(agent_id, session_id)
-            self._remove_session_store_entry(agent_id, session_key)
+            self._remove_session_store_entry(agent_id, session_key, effective_user_id)
             return True
         return False
 
@@ -743,8 +764,10 @@ class SessionManager:
         agent_id: str,
         summary: str,
         n_messages: int,
+        user_id: str = "default",
     ) -> dict[str, int]:
-        data = self.load_session(session_id, agent_id)
+        effective_user_id = user_id or "default"
+        data = self.load_session(session_id, agent_id, effective_user_id)
         if data is None:
             return {"archived_count": 0, "remaining_count": 0}
 
@@ -756,7 +779,7 @@ class SessionManager:
         archived = messages[:archive_count]
         remaining = messages[archive_count:]
 
-        archive_dir = resolve_agent_sessions_dir(agent_id) / "archive"
+        archive_dir = resolve_agent_sessions_dir(agent_id, effective_user_id) / "archive"
         archive_dir.mkdir(parents=True, exist_ok=True)
         archive_path = archive_dir / f"{session_id}_{int(time.time())}.json"
         with open(archive_path, "w", encoding="utf-8") as f:
@@ -770,10 +793,10 @@ class SessionManager:
 
         data["messages"] = remaining
         data["updated_at"] = time.time()
-        self._save_session_data(session_id, agent_id, data)
+        self._save_session_data(session_id, agent_id, data, effective_user_id)
 
         # 记录压缩历史（用于审计/回滚）
-        compactions_path = resolve_agent_sessions_dir(agent_id) / "compactions.jsonl"
+        compactions_path = resolve_agent_sessions_dir(agent_id, effective_user_id) / "compactions.jsonl"
         try:
             record = {
                 "session_id": session_id,
@@ -793,8 +816,9 @@ class SessionManager:
             "remaining_count": len(remaining),
         }
 
-    def get_compressed_context(self, session_id: str, agent_id: str) -> str | None:
-        data = self.load_session(session_id, agent_id)
+    def get_compressed_context(self, session_id: str, agent_id: str, user_id: str = "default") -> str | None:
+        effective_user_id = user_id or "default"
+        data = self.load_session(session_id, agent_id, effective_user_id)
         if data is None:
             return None
         return data.get("compressed_context")
@@ -863,19 +887,22 @@ class SessionManager:
     # 会话重置
     # ------------------------------------------------------------------
 
-    def reset_session(self, session_id: str, agent_id: str) -> dict[str, Any]:
+    def reset_session(self, session_id: str, agent_id: str, user_id: str = "default") -> dict[str, Any]:
         """
         重置会话：归档旧 JSON 并创建空白会话。
         返回 {"archived": bool, "archive_file": str}
         标题：使用 derive_session_title 推导，避免重复追加 (续)
         """
         import time as _time
+        import logging
+        logger = logging.getLogger(__name__)
 
+        effective_user_id = user_id or "default"
         result: dict[str, Any] = {"archived": False}
 
-        path = self._session_path(session_id, agent_id)
+        path = self._session_path(session_id, agent_id, effective_user_id)
         if path.exists():
-            archive_dir = resolve_agent_sessions_dir(agent_id) / "archive"
+            archive_dir = resolve_agent_sessions_dir(agent_id, effective_user_id) / "archive"
             try:
                 archive_dir.mkdir(parents=True, exist_ok=True)
                 ts = int(_time.time())
@@ -892,14 +919,14 @@ class SessionManager:
                 except OSError:
                     pass
 
-        cache_key = f"{agent_id}:{session_id}"
+        cache_key = f"{agent_id}:{effective_user_id}:{session_id}"
         self._cache.invalidate(cache_key)
 
         # 从索引中移除会话（因为已归档）
         session_key = self.session_key_from_session_id(agent_id, session_id)
-        self._remove_session_store_entry(agent_id, session_key)
+        self._remove_session_store_entry(agent_id, session_key, effective_user_id)
 
-        self.ensure_session(session_id, agent_id)
+        self.ensure_session(session_id, agent_id, effective_user_id)
 
         return result
 
@@ -907,9 +934,9 @@ class SessionManager:
     # 获取活跃会话 ID
     # ------------------------------------------------------------------
 
-    def get_active_session_id(self, agent_id: str) -> str | None:
+    def get_active_session_id(self, agent_id: str, user_id: str = "default") -> str | None:
         """返回 Agent 最近活跃的会话 ID"""
-        sessions = self.list_sessions(agent_id)
+        sessions = self.list_sessions(agent_id, user_id)
         return sessions[0]["session_id"] if sessions else None
 
 

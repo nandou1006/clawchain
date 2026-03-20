@@ -5,12 +5,14 @@ import { useApp } from "@/lib/store";
 import ChatMessage from "./ChatMessage";
 import ChatInput from "./ChatInput";
 import RetrievalCard from "./RetrievalCard";
+import { SessionList } from "./SessionList";
 import { Bot, Activity } from "lucide-react";
 
 export default function ChatPanel() {
   const {
     messages, currentSessionId, sessionError,
     currentAgentId, agents, runningSubagents, setInspectorTab, t,
+    userId,
   } = useApp();
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -23,6 +25,18 @@ export default function ChatPanel() {
   if (!currentSessionId || messages.length === 0) {
     return (
       <div className="h-full flex flex-col" style={{ background: "var(--bg)" }} data-testid="chat-panel">
+        {/* Header with SessionList and Agent name */}
+        <div className="flex items-center gap-2 px-4 py-2 border-b" style={{ borderColor: "var(--border)" }}>
+          <SessionList
+            agentId={currentAgentId}
+            userId={userId}
+            currentSessionId={currentSessionId}
+          />
+          <span className="text-sm font-medium" style={{ color: "var(--text)" }}>
+            Agent: {currentAgent?.name || currentAgentId}
+          </span>
+        </div>
+
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center px-6 max-w-md animate-fade-in-up">
             <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-[var(--accent)] to-blue-500 flex items-center justify-center mx-auto mb-5"
@@ -62,6 +76,18 @@ export default function ChatPanel() {
 
   return (
     <div className="h-full flex flex-col" style={{ background: "var(--bg)" }} data-testid="chat-panel">
+      {/* Header with SessionList and Agent name */}
+      <div className="flex items-center gap-2 px-4 py-2 border-b" style={{ borderColor: "var(--border)" }}>
+        <SessionList
+          agentId={currentAgentId}
+          userId={userId}
+          currentSessionId={currentSessionId}
+        />
+        <span className="text-sm font-medium" style={{ color: "var(--text)" }}>
+          Agent: {currentAgent?.name || currentAgentId}
+        </span>
+      </div>
+
       {/* Subagent running banner */}
       {runningSubagents.length > 0 && (
         <div className="px-4 py-2 flex items-center gap-2 text-xs font-medium"

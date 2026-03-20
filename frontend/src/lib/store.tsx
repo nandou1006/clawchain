@@ -18,6 +18,11 @@ export interface UiNotice {
 }
 
 interface AppState {
+  // User
+  userId: string;
+  setUserId: (id: string) => void;
+  userRole: "admin" | "user" | null;
+
   // Agent
   agents: any[];
   currentAgentId: string;
@@ -82,6 +87,10 @@ interface AppState {
 const AppContext = createContext<AppState | null>(null);
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
+  // User state
+  const [userId, setUserIdState] = useState<string>("");
+  const [userRole, setUserRole] = useState<"admin" | "user" | null>(null);
+
   const [agents, setAgents] = useState<any[]>([]);
   const [currentAgentId, setCurrentAgentId] = useState("main");
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
@@ -113,6 +122,21 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setLocaleState(l);
     try { window.localStorage.setItem("clawchain.locale", l); } catch {}
   }, []);
+
+  // User ID and role management
+  const setUserId = useCallback((id: string) => {
+    setUserIdState(id);
+    try { window.localStorage.setItem("clawchain.userId", id); } catch {}
+  }, []);
+
+  useEffect(() => {
+    if (!userId) return;
+    api.fetchUserInfo(userId).then((info) => {
+      setUserRole(info.role as "admin" | "user");
+    }).catch(() => {
+      setUserRole("user");
+    });
+  }, [userId]);
 
   // 持久化 currentAgentId（Hydration 安全：初始 "main"，useEffect 恢复）
   useEffect(() => {
@@ -368,6 +392,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, [chat.lifecycleEvents, showNotice]);
 
   const value: AppState = {
+    userId,
+    setUserId,
+    userRole,
+
     agents,
     currentAgentId,
     currentSessionId,

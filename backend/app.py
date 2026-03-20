@@ -144,6 +144,7 @@ from api.config_api import router as config_router  # noqa: E402
 from api.events import router as events_router      # noqa: E402
 from api.cron_api import router as cron_router      # noqa: E402
 from api.approvals import router as approvals_router  # noqa: E402
+from api.auth import router as auth_router          # noqa: E402
 
 app.include_router(chat_router, prefix="/api")
 app.include_router(agents_router, prefix="/api")
@@ -154,6 +155,7 @@ app.include_router(config_router, prefix="/api")
 app.include_router(events_router, prefix="/api")
 app.include_router(cron_router, prefix="/api")
 app.include_router(approvals_router, prefix="/api")
+app.include_router(auth_router, prefix="/api")
 
 
 @app.get("/api/health")

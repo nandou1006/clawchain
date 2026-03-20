@@ -434,6 +434,36 @@ class BrowserConfig(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Auth Config (用户认证与角色管理)
+# ---------------------------------------------------------------------------
+
+class UserConfig(BaseModel):
+    """用户配置"""
+    id: str
+    name: Optional[str] = None
+    role: Literal["admin", "user"] = "user"
+
+
+class UsersConfig(BaseModel):
+    """多用户配置"""
+    enabled: bool = False
+    default_user_id: str = "default"
+    users: List[UserConfig] = Field(default_factory=list)
+
+
+class ApiKeyConfig(BaseModel):
+    """API Key配置"""
+    enabled: bool = False
+    key: Optional[str] = None
+
+
+class AuthConfig(BaseModel):
+    """认证配置"""
+    api_key: ApiKeyConfig = Field(default_factory=ApiKeyConfig)
+    users: UsersConfig = Field(default_factory=UsersConfig)
+
+
+# ---------------------------------------------------------------------------
 # Root Config
 # ---------------------------------------------------------------------------
 
@@ -454,6 +484,7 @@ class ClawChainConfig(BaseModel):
     runtime: RuntimeConfig = Field(default_factory=RuntimeConfig)
     skills: SkillsGlobalConfig = Field(default_factory=SkillsGlobalConfig)
     browser: BrowserConfig = Field(default_factory=BrowserConfig)
+    auth: AuthConfig = Field(default_factory=AuthConfig)
 
     model_config = {"populate_by_name": True, "extra": "allow"}
 

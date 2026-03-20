@@ -194,6 +194,20 @@ export async function fetchAgents(): Promise<any[]> {
   return resp.json();
 }
 
+// ---------- User API ----------
+
+export async function fetchUserInfo(userId: string): Promise<{ id: string; role: string; name?: string }> {
+  const resp = await fetch(`${API_BASE}/auth/user/${encodeURIComponent(userId)}`);
+  if (!resp.ok) throw new Error("Failed to fetch user info");
+  return resp.json();
+}
+
+export async function fetchSessions(agentId: string, userId?: string): Promise<any[]> {
+  const params = userId ? `?user_id=${encodeURIComponent(userId)}` : "";
+  const resp = await fetch(`${API_BASE}/agents/${agentId}/sessions${params}`);
+  return resp.json();
+}
+
 export async function createAgent(data: { id: string; name: string; description?: string; model?: string }) {
   const resp = await fetch(`${API_BASE}/agents`, {
     method: "POST",
@@ -372,11 +386,6 @@ export async function fetchRawConfig(): Promise<any> {
 }
 
 // --- Legacy API compat ---
-
-export async function fetchSessions(agentId: string): Promise<any[]> {
-  const resp = await fetch(`${API_BASE}/agents/${agentId}/sessions`);
-  return resp.json();
-}
 
 export async function fetchHistory(agentId: string, sessionId: string) {
   const resp = await fetch(`${API_BASE}/agents/${agentId}/sessions/${sessionId}/history`);

@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 
 router = APIRouter()
 
 
 @router.post("/agents/{agent_id}/sessions/{session_id}/compress")
-async def compress_session(agent_id: str, session_id: str):
+async def compress_session(agent_id: str, session_id: str, request: Request):
     """
     完整压缩流程：
     1. Memory Flush — 静默回合保存记忆到 memory/YYYY-MM-DD.md
@@ -18,7 +18,9 @@ async def compress_session(agent_id: str, session_id: str):
     from graph.agent import agent_manager
     from graph.session_manager import session_manager
 
-    data = session_manager.load_session(session_id, agent_id)
+    user_id = request.query_params.get("user_id") or request.headers.get("X-User-ID") or "default"
+
+    data = session_manager.load_session(session_id, agent_id, user_id)
     if data is None:
         raise HTTPException(404, "会话不存在")
 
@@ -27,7 +29,7 @@ async def compress_session(agent_id: str, session_id: str):
         raise HTTPException(400, "消息数量不足（至少需要 4 条）")
 
     try:
-        result = await agent_manager.compress_with_flush(session_id, agent_id)
+        result = await agent_manager.compress_with_flush(session_id, agent_id, user_id=user_id)
     except Exception as e:
         raise HTTPException(500, f"压缩失败: {e}")
 

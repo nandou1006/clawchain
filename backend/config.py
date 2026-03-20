@@ -467,8 +467,12 @@ def resolve_agent_skills_dir(agent_id: str) -> Path:
     return resolve_agent_workspace(agent_id) / "skills"
 
 
-def resolve_agent_sessions_dir(agent_id: str) -> Path:
-    return resolve_agent_dir(agent_id) / "sessions"
+def resolve_agent_sessions_dir(agent_id: str, user_id: str = "default") -> Path:
+    """Sessions 目录，支持用户隔离。路径: data/agents/{agent_id}/sessions/{user_id}/"""
+    base = resolve_agent_dir(agent_id) / "sessions"
+    if user_id and user_id != "default":
+        return base / user_id
+    return base
 
 
 def resolve_agent_knowledge_dir(agent_id: str) -> Path:

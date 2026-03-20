@@ -6,7 +6,7 @@ import asyncio
 import json
 from typing import Any, AsyncGenerator
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
@@ -18,6 +18,7 @@ class ChatRequest(BaseModel):
     session_id: str = ""
     agent_id: str = "main"
     stream: bool = True
+    user_id: str = ""
 
 
 class ChatAbortRequest(BaseModel):
@@ -25,6 +26,7 @@ class ChatAbortRequest(BaseModel):
     agent_id: str = "main"
     clear_followups: bool = False
     user_initiated: bool = True
+    user_id: str = ""
 
 
 def _should_skip_auto_title(message: str) -> bool:
@@ -40,9 +42,9 @@ async def _event_generator(req: ChatRequest) -> AsyncGenerator[str, None]:
     from graph.message_queue import message_queue_manager
 
     if not req.session_id:
-        req.session_id = session_manager.resolve_main_session_id(req.agent_id)
+        req.session_id = session_manager.resolve_main_session_id(req.agent_id, user_id=req.user_id)
 
-    queue = message_queue_manager.get_queue(req.agent_id, req.session_id)
+    queue = message_queue_manager.get_queue(req.agent_id, req.session_id, user_id=req.user_id)
 
     from config import get_config
     from graph.command_parser import t
@@ -82,6 +84,7 @@ async def _event_generator(req: ChatRequest) -> AsyncGenerator[str, None]:
             session_id=req.session_id,
             agent_id=req.agent_id,
             stream=req.stream,
+            user_id=req.user_id,
         )
         await queue.acquire()
         queue.set_active_task(asyncio.current_task())
@@ -101,7 +104,7 @@ async def _stream_turn(req: ChatRequest, queue: Any) -> AsyncGenerator[str, None
     from graph.agent import agent_manager
     from graph.session_manager import session_manager
 
-    session_data = session_manager.load_session(req.session_id, req.agent_id)
+    session_data = session_manager.load_session(req.session_id, req.agent_id, user_id=req.user_id)
     is_first_message = session_data is None or len(session_data.get("messages", [])) == 0
     partial_text = ""
     run_id = ""
@@ -135,17 +138,18 @@ async def _stream_turn(req: ChatRequest, queue: Any) -> AsyncGenerator[str, None
             except Exception:
                 pass
             try:
-                data = session_manager.load_session(req.session_id, req.agent_id) or {}
+                data = session_manager.load_session(req.session_id, req.agent_id, user_id=req.user_id) or {}
                 messages = data.get("messages", []) if isinstance(data, dict) else []
                 has_user = bool(messages and messages[-1].get("role") == "user" and messages[-1].get("content") == req.message)
                 if not has_user:
-                    session_manager.save_message(req.session_id, req.agent_id, "user", req.message)
+                    session_manager.save_message(req.session_id, req.agent_id, "user", req.message, user_id=req.user_id)
                 if (partial_text or "").strip():
                     session_manager.save_message(
                         req.session_id,
                         req.agent_id,
                         "assistant",
                         partial_text,
+                        user_id=req.user_id,
                     )
             except Exception:
                 pass
@@ -201,7 +205,11 @@ async def _generate_title(message: str, agent_id: str) -> str | None:
 
 
 @router.post("/chat")
-async def chat(req: ChatRequest):
+async def chat(req: ChatRequest, request: Request):
+    # Extract user_id from query_params or headers
+    user_id = request.query_params.get("user_id") or request.headers.get("X-User-Id") or ""
+    req.user_id = user_id
+
     if req.stream:
         return StreamingResponse(
             _event_generator(req),
@@ -228,12 +236,16 @@ async def chat(req: ChatRequest):
 
 
 @router.post("/chat/abort")
-async def abort_chat(req: ChatAbortRequest):
+async def abort_chat(req: ChatAbortRequest, request: Request):
     from graph.session_manager import session_manager
     from graph.message_queue import message_queue_manager
 
-    session_id = req.session_id or session_manager.resolve_main_session_id(req.agent_id)
-    queue = message_queue_manager.get_queue(req.agent_id, session_id)
+    # Extract user_id from query_params or headers
+    user_id = request.query_params.get("user_id") or request.headers.get("X-User-Id") or ""
+    req.user_id = user_id
+
+    session_id = req.session_id or session_manager.resolve_main_session_id(req.agent_id, user_id=req.user_id)
+    queue = message_queue_manager.get_queue(req.agent_id, session_id, user_id=req.user_id)
     aborted = queue.abort_active_task(user_initiated=req.user_initiated)
     cleared = queue.clear_followups() if req.clear_followups else 0
     return {

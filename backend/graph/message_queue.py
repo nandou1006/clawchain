@@ -115,19 +115,19 @@ class MessageQueueManager:
     def __init__(self):
         self._queues: dict[str, SessionQueue] = {}
 
-    def get_queue(self, agent_id: str, session_id: str) -> SessionQueue:
-        key = f"{agent_id}:{session_id}"
+    def get_queue(self, agent_id: str, session_id: str, user_id: str = "default") -> SessionQueue:
+        key = f"{agent_id}:{user_id}:{session_id}"
         if key not in self._queues:
             self._queues[key] = SessionQueue()
         return self._queues[key]
 
-    def is_session_busy(self, agent_id: str, session_id: str) -> bool:
-        key = f"{agent_id}:{session_id}"
+    def is_session_busy(self, agent_id: str, session_id: str, user_id: str = "default") -> bool:
+        key = f"{agent_id}:{user_id}:{session_id}"
         queue = self._queues.get(key)
         return queue.is_busy if queue else False
 
-    def cleanup(self, agent_id: str, session_id: str) -> None:
-        key = f"{agent_id}:{session_id}"
+    def cleanup(self, agent_id: str, session_id: str, user_id: str = "default") -> None:
+        key = f"{agent_id}:{user_id}:{session_id}"
         self._queues.pop(key, None)
 
 

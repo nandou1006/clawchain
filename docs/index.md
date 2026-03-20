@@ -8,6 +8,7 @@
 - `configuration/`：配置结构与 Provider 说明
 - `agents/`：Agent 架构、Prompt 与记忆机制
 - `api/`：后端 API 参考
+- `architecture/`：架构设计文档
 - `help/`：故障排查
 
 ## 推荐阅读顺序

@@ -20,6 +20,7 @@ class SubagentKillRequest(BaseModel):
 class SubagentSteerRequest(BaseModel):
     run_id: str
     message: str
+    user_id: str | None = None
 
 
 @router.get("/agents/{agent_id}/events")
@@ -76,7 +77,7 @@ async def agent_audit_log(agent_id: str, limit: int = 50):
     return audit_logger.read_recent(agent_id, limit)
 
 
-def _run_to_item(r, session_manager, time_module) -> dict:
+def _run_to_item(r, session_manager, time_module, user_id: str = "default") -> dict:
     """将 SubagentRunRecord 转为 API 项"""
     elapsed = None
     duration_ms = None
@@ -90,7 +91,7 @@ def _run_to_item(r, session_manager, time_module) -> dict:
     child_session = child_parts[-1] if len(child_parts) >= 2 else r.child_session_key
     child_agent = child_parts[1] if len(child_parts) >= 2 else r.target_agent_id
     messages = []
-    data = session_manager.load_session(child_session, child_agent)
+    data = session_manager.load_session(child_session, child_agent, user_id)
     if data:
         for m in data.get("messages", []):
             messages.append({
@@ -130,6 +131,7 @@ def _build_subagent_tree(
     session_id_filter: str | None,
     time_module,
     cutoff: float | None = None,
+    user_id: str = "default",
 ) -> list[dict]:
     """递归构建子 Agent 树。cutoff 为 None 时不过滤；否则只包含 ended_at is None 或 ended_at >= cutoff 的 run"""
     children_sk = registry.session_key_from_child_session_key
@@ -141,7 +143,7 @@ def _build_subagent_tree(
             continue
         if cutoff is not None and r.ended_at is not None and r.ended_at < cutoff:
             continue
-        item = _run_to_item(r, session_manager, time_module)
+        item = _run_to_item(r, session_manager, time_module, user_id)
         child_sk = children_sk(r.child_session_key)
         item["descendants_active_count"] = registry.count_active_descendant_runs(child_sk)
         item["children"] = _build_subagent_tree(
@@ -152,6 +154,7 @@ def _build_subagent_tree(
             session_id_filter,
             time_module,
             cutoff=cutoff,
+            user_id=user_id,
         )
         tree.append(item)
     tree.sort(key=lambda x: x["created_at"], reverse=True)
@@ -163,6 +166,7 @@ async def list_subagents(
     agent_id: str,
     session_id: str | None = None,
     include_recent_minutes: int | None = None,
+    user_id: str | None = None,
 ):
     """获取子 Agent 列表及状态，返回树结构 + 扁平列表（按 requester_session_key 建树）
 
@@ -173,6 +177,8 @@ async def list_subagents(
     from config import get_config
     from graph.subagent_registry import registry
     from graph.session_manager import session_manager
+
+    effective_user_id = user_id or "default"
 
     cfg = get_config()
     default_recent = (
@@ -205,6 +211,7 @@ async def list_subagents(
         None,
         time_module,
         cutoff=cutoff,
+        user_id=effective_user_id,
     )
 
     flat: list[dict] = []
@@ -266,6 +273,7 @@ async def steer_subagent(agent_id: str, req: SubagentSteerRequest):
 
     run_id = (req.run_id or "").strip()
     message = (req.message or "").strip()
+    user_id = getattr(req, "user_id", None) or "default"
     if not run_id or not message:
         return {"ok": False, "error": "run_id and message are required"}
     if len(message) > 4000:
@@ -289,7 +297,7 @@ async def steer_subagent(agent_id: str, req: SubagentSteerRequest):
         return {"ok": False, "error": "invalid child session key"}
     target_agent_id, target_session_id = parsed_child
 
-    session_manager.save_message(target_session_id, target_agent_id, "user", message)
+    session_manager.save_message(target_session_id, target_agent_id, "user", message, user_id=user_id)
     registry.kill(run_id)
     new_run_id = uuid.uuid4().hex[:12]
     next_record = registry.replace_run_after_steer(

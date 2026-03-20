@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, Suspense } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import { PanelRightOpen } from "lucide-react";
 import * as api from "@/lib/api";
 import { useApp } from "@/lib/store";
@@ -11,10 +12,16 @@ import ConfigModal from "@/components/layout/ConfigModal";
 import ApprovalModal from "@/components/layout/ApprovalModal";
 import ResizeHandle from "@/components/layout/ResizeHandle";
 
-export default function HomePage() {
+function HomeContent() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const userId = searchParams.get("user_id");
+
   const {
     loadAgents,
     loadMainSession,
+    setUserId,
+    userRole,
     inspectorWidth,
     setInspectorWidth,
     inspectorPanelMode,
@@ -27,10 +34,20 @@ export default function HomePage() {
   } = useApp();
   const initCheckedRef = useRef(false);
 
+  // 无user_id时跳转到错误页面
   useEffect(() => {
+    if (!userId) {
+      router.push("/unauthorized");
+      return;
+    }
+    setUserId(userId);
+  }, [userId, router, setUserId]);
+
+  useEffect(() => {
+    if (!userId) return;
     loadAgents();
     loadMainSession();
-  }, [loadAgents, loadMainSession]);
+  }, [userId, loadAgents, loadMainSession]);
 
   useEffect(() => {
     if (initCheckedRef.current) return;
@@ -53,6 +70,37 @@ export default function HomePage() {
     return () => clearTimeout(timer);
   }, [uiNotice, clearNotice]);
 
+  if (!userId) {
+    return null;
+  }
+
+  // 是否为管理员
+  const isAdmin = userRole === "admin";
+
+  // 普通用户：只显示 ChatPanel
+  if (!isAdmin) {
+    return (
+      <div className="h-screen flex flex-col overflow-hidden" style={{ background: "var(--bg)" }}>
+        <ApprovalModal />
+        {uiNotice && (
+          <div className={`toast toast--${uiNotice.kind} animate-slide-in-left`}>
+            {uiNotice.text}
+          </div>
+        )}
+        {sessionError && (
+          <div className="px-4 py-2 text-xs font-medium"
+            style={{ background: "var(--error-bg)", color: "var(--error)", borderBottom: "1px solid var(--border)" }}>
+            {sessionError}
+          </div>
+        )}
+        <div className="flex-1 overflow-hidden">
+          <ChatPanel />
+        </div>
+      </div>
+    );
+  }
+
+  // 管理员：显示完整界面（Navbar + ChatPanel + InspectorPanel + ConfigModal）
   return (
     <div className="h-screen flex flex-col overflow-hidden" style={{ background: "var(--bg)" }}>
       <Navbar />
@@ -123,5 +171,13 @@ export default function HomePage() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function HomePage() {
+  return (
+    <Suspense fallback={<div className="h-screen" style={{ background: "var(--bg)" }} />}>
+      <HomeContent />
+    </Suspense>
   );
 }

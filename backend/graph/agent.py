@@ -452,6 +452,7 @@ class AgentManager:
         agent_id: str = "main",
         prompt_mode: str = "full",
         persist_input_role: str = "user",
+        user_id: str = "default",
     ) -> AsyncGenerator[dict[str, Any], None]:
         from tools.skills_scanner import write_skills_snapshot
 
@@ -468,18 +469,18 @@ class AgentManager:
                     # /new：保存 session-memory 后重置，再注入 BARE_SESSION_RESET_PROMPT 跑一轮问候
                     model_override = result.get("model_override")
                     async for evt in self._handle_reset(
-                        session_id, agent_id, model_override=model_override
+                        session_id, agent_id, user_id=user_id, model_override=model_override
                     ):
                         yield evt
                     message = BARE_SESSION_RESET_PROMPT
                 elif action == "reset_noflush":
                     # /reset：不写入 session-memory 的轻量重置，再注入 BARE_SESSION_RESET_PROMPT 跑一轮问候
-                    async for evt in self._handle_reset_noflush(session_id, agent_id):
+                    async for evt in self._handle_reset_noflush(session_id, agent_id, user_id=user_id):
                         yield evt
                     message = BARE_SESSION_RESET_PROMPT
                 else:
                     if action == "compact":
-                        async for evt in self._handle_compact(session_id, agent_id):
+                        async for evt in self._handle_compact(session_id, agent_id, user_id=user_id):
                             yield evt
                         return
                     if action == "stop":
@@ -496,12 +497,12 @@ class AgentManager:
         agent_cfg = resolve_agent_config(agent_id)
         compaction_cfg = agent_cfg.get("compaction", {})
         if compaction_cfg.get("enabled", True) and compaction_cfg.get("memoryFlush", True):
-            session_data = session_manager.load_session(session_id, agent_id)
+            session_data = session_manager.load_session(session_id, agent_id, user_id)
             if should_run_memory_flush(session_data, agent_id, state.compaction_count):
-                flush_result = await self.run_memory_flush(session_id, agent_id)
+                flush_result = await self.run_memory_flush(session_id, agent_id, user_id=user_id)
                 if flush_result is not None:
                     session_manager.set_memory_flush_compaction_count(
-                        session_id, agent_id, state.compaction_count
+                        session_id, agent_id, state.compaction_count, user_id=user_id
                     )
 
         # 检测 BOOTSTRAP.md
@@ -534,7 +535,7 @@ class AgentManager:
         system_prompt, prompt_report = prompt_builder.build_system_prompt_with_report(prompt_params)
         logger.info(prompt_report.summary())
 
-        history = session_manager.load_session_for_agent(session_id, agent_id)
+        history = session_manager.load_session_for_agent(session_id, agent_id, user_id)
 
         # 会话修剪
         history = prune_messages(history)
@@ -780,11 +781,12 @@ class AgentManager:
                 full_response = strip_tool_call_patterns(full_response)
 
             # 保存消息（若含文本形式工具调用则保存清理后的 content）
-            session_manager.save_message(session_id, agent_id, persist_input_role, message)
+            session_manager.save_message(session_id, agent_id, persist_input_role, message, user_id=user_id)
             content_to_save = strip_tool_call_patterns(full_response) if parse_text_tool_calls(full_response) else full_response
             session_manager.save_message(
                 session_id, agent_id, "assistant", content_to_save,
                 tool_calls=tool_calls_log if tool_calls_log else None,
+                user_id=user_id,
             )
 
             write_skills_snapshot(agent_id)
@@ -815,7 +817,7 @@ class AgentManager:
             }
 
             # 自动压缩检测
-            await self._maybe_auto_compact(session_id, agent_id)
+            await self._maybe_auto_compact(session_id, agent_id, user_id=user_id)
 
         # 外层循环：瞬时 HTTP 重试、压缩失败/role ordering/session 损坏恢复
         while True:
@@ -835,7 +837,7 @@ class AgentManager:
 
                 if is_compaction_failure_error(msg) and not did_reset_compaction:
                     did_reset_compaction = True
-                    session_manager.reset_session(session_id, agent_id)
+                    session_manager.reset_session(session_id, agent_id, user_id)
                     state.compaction_count = 0
                     audit_logger.log(agent_id, "session_reset_compaction_failure", {"error": msg[:200]})
                     yield {
@@ -854,7 +856,7 @@ class AgentManager:
                     return
 
                 if is_role_ordering_error(msg):
-                    session_manager.reset_session(session_id, agent_id)
+                    session_manager.reset_session(session_id, agent_id, user_id)
                     state.compaction_count = 0
                     yield {"type": "session_reset", "session_id": session_id, "memory": {"saved": False}}
                     yield {
@@ -865,7 +867,7 @@ class AgentManager:
                     return
 
                 if is_session_corruption_error(msg):
-                    session_manager.reset_session(session_id, agent_id)
+                    session_manager.reset_session(session_id, agent_id, user_id)
                     state.compaction_count = 0
                     yield {"type": "session_reset", "session_id": session_id, "memory": {"saved": False}}
                     yield {
@@ -890,13 +892,13 @@ class AgentManager:
     # 自动压缩
     # ------------------------------------------------------------------
 
-    async def _maybe_auto_compact(self, session_id: str, agent_id: str) -> None:
+    async def _maybe_auto_compact(self, session_id: str, agent_id: str, user_id: str = "default") -> None:
         agent_cfg = resolve_agent_config(agent_id)
         compaction_cfg = agent_cfg.get("compaction", {})
         if not compaction_cfg.get("enabled", True):
             return
 
-        data = session_manager.load_session(session_id, agent_id)
+        data = session_manager.load_session(session_id, agent_id, user_id)
         if not data:
             return
 
@@ -915,7 +917,7 @@ class AgentManager:
                 "session_id": session_id,
             })
             try:
-                await self.compress_with_flush(session_id, agent_id)
+                await self.compress_with_flush(session_id, agent_id, user_id=user_id)
                 event_bus.emit(agent_id, {
                     "type": "lifecycle",
                     "event": "auto_compact_done",
@@ -930,12 +932,12 @@ class AgentManager:
     # ------------------------------------------------------------------
 
     async def _handle_reset(
-        self, session_id: str, agent_id: str, model_override: str | None = None,
+        self, session_id: str, agent_id: str, user_id: str = "default", model_override: str | None = None,
     ) -> AsyncGenerator[dict[str, Any], None]:
         """/new：保存 session-memory 后重置会话"""
         yield {"type": "command_response", "response": "正在重置会话（写入长期记忆，可能需要数秒）..."}
 
-        data = session_manager.load_session(session_id, agent_id)
+        data = session_manager.load_session(session_id, agent_id, user_id)
         messages = data.get("messages", []) if data else []
 
         # /new 快速路径：不在前台阻塞等待记忆保存，先重置会话再后台异步归档。
@@ -960,7 +962,7 @@ class AgentManager:
             task.add_done_callback(self._pending_tasks.discard)
             mem_result = {"saved": False, "queued": True, "reason": "后台保存中"}
 
-        session_manager.reset_session(session_id, agent_id)
+        session_manager.reset_session(session_id, agent_id, user_id)
 
         state = self.get_state(agent_id)
         state.compaction_count = 0
@@ -996,12 +998,12 @@ class AgentManager:
         # 不 yield done：主流程会接着用 BARE_SESSION_RESET_PROMPT 跑问候，由 agent 流产出 done
 
     async def _handle_reset_noflush(
-        self, session_id: str, agent_id: str,
+        self, session_id: str, agent_id: str, user_id: str = "default",
     ) -> AsyncGenerator[dict[str, Any], None]:
         """/reset：不写入 session-memory 的轻量重置，仅归档会话文件。"""
         yield {"type": "command_response", "response": "正在重置会话（不写入长期记忆）..."}
 
-        session_manager.reset_session(session_id, agent_id)
+        session_manager.reset_session(session_id, agent_id, user_id)
 
         state = self.get_state(agent_id)
         state.compaction_count = 0
@@ -1030,7 +1032,7 @@ class AgentManager:
     # ------------------------------------------------------------------
 
     async def _handle_compact(
-        self, session_id: str, agent_id: str
+        self, session_id: str, agent_id: str, user_id: str = "default"
     ) -> AsyncGenerator[dict[str, Any], None]:
         yield {"type": "command_response", "response": "正在执行压缩..."}
         event_bus.emit(agent_id, {
@@ -1040,10 +1042,10 @@ class AgentManager:
         })
 
         try:
-            result = await self.compress_with_flush(session_id, agent_id)
+            result = await self.compress_with_flush(session_id, agent_id, user_id=user_id)
             if "error" in result:
                 reason = str(result.get("error") or "未知原因")
-                session_data = session_manager.load_session(session_id, agent_id) or {}
+                session_data = session_manager.load_session(session_id, agent_id, user_id) or {}
                 messages = session_data.get("messages", []) or []
                 compressed_ctx = session_data.get("compressed_context") or ""
                 msg_tokens = 0
@@ -1154,7 +1156,7 @@ class AgentManager:
     # ------------------------------------------------------------------
 
     async def run_memory_flush(
-        self, session_id: str, agent_id: str
+        self, session_id: str, agent_id: str, user_id: str = "default"
     ) -> str | None:
         try:
             llm = self.get_llm(agent_id)
@@ -1174,7 +1176,7 @@ class AgentManager:
         except ImportError:
             return None
 
-        history = session_manager.load_session_for_agent(session_id, agent_id)
+        history = session_manager.load_session_for_agent(session_id, agent_id, user_id)
         lc_messages = self._build_messages(history, flush_prompt)
 
         response_parts: list[str] = []
@@ -1195,7 +1197,8 @@ class AgentManager:
         if result and result != "NO_REPLY":
             session_manager.save_message(
                 session_id, agent_id, "system",
-                f"[记忆刷新] {result[:500]}"
+                f"[记忆刷新] {result[:500]}",
+                user_id=user_id,
             )
             audit_logger.log_memory_event(agent_id, "flush", detail=result[:200])
 
@@ -1206,9 +1209,9 @@ class AgentManager:
     # ------------------------------------------------------------------
 
     async def save_session_memory(
-        self, session_id: str, agent_id: str
+        self, session_id: str, agent_id: str, user_id: str = "default"
     ) -> dict[str, Any]:
-        data = session_manager.load_session(session_id, agent_id)
+        data = session_manager.load_session(session_id, agent_id, user_id)
         if not data:
             return {"saved": False, "reason": "会话不存在"}
 
@@ -1416,7 +1419,7 @@ class AgentManager:
         )
 
     async def compress_with_flush(
-        self, session_id: str, agent_id: str
+        self, session_id: str, agent_id: str, user_id: str = "default"
     ) -> dict[str, Any]:
         result: dict[str, Any] = {
             "memory_flush": None,
@@ -1429,15 +1432,15 @@ class AgentManager:
         do_memory_flush = compaction_cfg.get("memoryFlush", True)
         keep_recent_tokens = compaction_cfg.get("keepRecentTokens", 8000)
 
-        data = session_manager.load_session(session_id, agent_id)
+        data = session_manager.load_session(session_id, agent_id, user_id)
         # 仅在本压缩周期尚未 flush 时执行（避免与 astream 开头的提前 flush 重复）
         state = self.get_state(agent_id)
         if do_memory_flush and data and should_run_memory_flush(data, agent_id, state.compaction_count):
-            flush_result = await self.run_memory_flush(session_id, agent_id)
+            flush_result = await self.run_memory_flush(session_id, agent_id, user_id=user_id)
             result["memory_flush"] = flush_result
             if flush_result is not None:
                 session_manager.set_memory_flush_compaction_count(
-                    session_id, agent_id, state.compaction_count
+                    session_id, agent_id, state.compaction_count, user_id=user_id
                 )
         if not data:
             return {**result, "error": "会话不存在"}
@@ -1463,12 +1466,12 @@ class AgentManager:
         )
 
         compress_result = session_manager.compress_history(
-            session_id, agent_id, summary, n
+            session_id, agent_id, summary, n, user_id=user_id
         )
         result["compress"] = {"summary": summary, **compress_result}
 
         post_context = prompt_builder.build_post_compaction_context(agent_id)
-        session_manager.save_message(session_id, agent_id, "system", post_context)
+        session_manager.save_message(session_id, agent_id, "system", post_context, user_id=user_id)
         result["post_compaction"] = "已注入"
 
         state = self.get_state(agent_id)
