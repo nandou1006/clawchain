@@ -1,6 +1,6 @@
 # 5 分钟上手
 
-> summary: 本地启动 ClawChain 并完成首轮对话验证  
+> summary: 本地启动 NetClaw 并完成首轮对话验证
 > read_when: 你第一次运行项目或刚克隆仓库
 
 ## 目标
@@ -15,7 +15,7 @@
 
 ## 最小步骤
 
-（以下命令均从仓库根目录 `clawchain/` 出发）
+（以下命令均从仓库根目录 `netclaw/` 出发）
 
 ```bash
 python scripts/dev.py

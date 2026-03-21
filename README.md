@@ -1,6 +1,6 @@
 <div align="center">
-  <img src="images/clawchain_logo.png" alt="ClawChain" width="400">
-  <h1>ClawChain</h1>
+  <img src="images/netclaw_logo.png" alt="NetClaw" width="400">
+  <h1>NetClaw</h1>
   <p>
     <img src="https://img.shields.io/badge/python-≥3.11-blue" alt="Python">
     <img src="https://img.shields.io/badge/license-MIT-green" alt="License">
@@ -9,7 +9,7 @@
 
 ---
 
-**ClawChain** 是对 [OpenClaw](https://github.com/openclaw/openclaw) 的致敬项目 —— 一个基于 Python + LangChain/LangGraph 搭建的本地 Agent 工程实践。
+**NetClaw** 是对 [OpenClaw](https://github.com/openclaw/openclaw) 的致敬项目 —— 一个基于 Python + LangChain/LangGraph 搭建的本地 Agent 工程实践。
 
 **定位**：本地优先、工程实践导向、以 Web + Desktop 为主交互。
 
@@ -20,7 +20,7 @@
 ## 🏗️ 架构
 
 <p align="center">
-  <img src="images/clawchain_arch.png" alt="ClawChain 架构" width="800">
+  <img src="images/netclaw_arch.png" alt="NetClaw 架构" width="800">
 </p>
 
 ---
@@ -52,7 +52,7 @@
 ### 1) 记忆机制（写入 + 检索）
 
 <p align="center">
-  <img src="images/clawchain_memory_mechanism.png" alt="记忆机制" width="700">
+  <img src="images/netclaw_memory_mechanism.png" alt="记忆机制" width="700">
 </p>
 
 <p align="center">用户消息经 Agent 执行后，命中记忆触发条件则写入 MEMORY.md / memory/*.md，由 MemoryIndexer 建索引供后续检索召回；否则仅进入会话历史。</p>
@@ -60,7 +60,7 @@
 ### 2) 子 Agent 机制（嵌套通信）
 
 <p align="center">
-  <img src="images/clawchain_subagent_mechanism.png" alt="子 Agent 机制" width="700">
+  <img src="images/netclaw_subagent_mechanism.png" alt="子 Agent 机制" width="700">
 </p>
 
 <p align="center">主 Agent 下发子任务给子 Agent，子任务事件与中间结果实时回传 Inspector，最终汇总回复用户。</p>
@@ -68,7 +68,7 @@
 ### 3) 中断与排队机制（stop/abort/followup）
 
 <p align="center">
-  <img src="images/clawchain_interrupt_queue_mechanism.png" alt="中断与排队机制" width="700">
+  <img src="images/netclaw_interrupt_queue_mechanism.png" alt="中断与排队机制" width="700">
 </p>
 
 <p align="center">会话 busy 时新消息进入 followup 队列；用户点击 stop 时调用 POST /api/chat/abort 取消当前 run，尽量保存 partial 并返回 aborted 终态。</p>

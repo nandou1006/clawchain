@@ -1,6 +1,6 @@
-# ClawChain（中文）
+# NetClaw（中文）
 
-ClawChain 是一个基于 Python + LangChain/LangGraph 搭建的本地 Agent 项目。
+NetClaw 是一个基于 Python + LangChain/LangGraph 搭建的本地 Agent 项目。
 
 **定位**：本地优先、工程实践导向、以 Web + Desktop 为主交互，不追求 OpenClaw 全量生态能力的 1:1 复刻。
 

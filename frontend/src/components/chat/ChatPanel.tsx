@@ -44,7 +44,7 @@ export default function ChatPanel() {
               <Bot className="w-8 h-8 text-white" />
             </div>
             <h2 className="text-xl font-semibold text-[var(--text)] mb-2">
-              {currentAgent?.name || "ClawChain"}
+              {currentAgent?.name || "NetClaw"}
             </h2>
             <p className="text-sm text-[var(--text-secondary)] leading-relaxed mb-6">
               {currentAgent?.description || t.agentDescription}

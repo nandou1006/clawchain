@@ -1,6 +1,6 @@
 # 常见问题排查
 
-> summary: 按症状定位 ClawChain 常见故障并快速修复  
+> summary: 按症状定位 NetClaw 常见故障并快速修复
 > read_when: 前端转圈、接口报错、模型不返回、初始化失败
 
 ## 目标

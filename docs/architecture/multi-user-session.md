@@ -2,7 +2,7 @@
 
 ## 背景
 
-当前ClawChain是单用户本地应用，没有用户认证机制。本计划实现：
+当前NetClaw是单用户本地应用，没有用户认证机制。本计划实现：
 1. **多用户Session隔离** - 不同用户的会话互不可见
 2. **用户角色管理** - admin/user两种角色
 3. **API Key认证** - 支持`/api/chat`接口的API访问
@@ -34,8 +34,8 @@ class AuthConfig(BaseModel):
     api_key: ApiKeyConfig = Field(default_factory=ApiKeyConfig)
     users: UsersConfig = Field(default_factory=UsersConfig)
 
-# 扩展ClawChainConfig
-class ClawChainConfig(BaseModel):
+# 扩展NetClawConfig
+class NetClawConfig(BaseModel):
     # ... existing fields ...
     auth: AuthConfig = Field(default_factory=AuthConfig)
 ```
@@ -71,7 +71,7 @@ API Key支持环境变量引用，避免明文存储：
   "auth": {
     "api_key": {
       "enabled": true,
-      "key": "${CLAWCHAIN_API_KEY}"
+      "key": "${NETCLAW_API_KEY}"
     }
   }
 }

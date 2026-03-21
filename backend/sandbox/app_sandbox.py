@@ -1,7 +1,7 @@
 """App Sandbox 设计 — 面向普通用户的工作区隔离
 
 为桌面 App 模式设计的工作区沙箱策略:
-1. 用户友好的目录结构 (~/ClawChain/)
+1. 用户友好的目录结构 (~/NetClaw/)
 2. 严格的路径边界控制
 3. 文件授权机制 (通过 macOS File Dialog 授权额外目录)
 """
@@ -19,13 +19,13 @@ _AUTH_FILE: Path | None = None
 
 
 def get_app_workspace_root() -> Path:
-    """获取 App 模式下的工作区根目录 (~/ClawChain/)"""
+    """获取 App 模式下的工作区根目录 (~/NetClaw/)"""
     if platform.system() == "Darwin":
-        return Path.home() / "ClawChain"
+        return Path.home() / "NetClaw"
     elif platform.system() == "Windows":
-        return Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local")) / "ClawChain"
+        return Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local")) / "NetClaw"
     else:
-        return Path.home() / ".clawchain"
+        return Path.home() / ".netclaw"
 
 
 def ensure_app_workspace() -> dict[str, Path]:
@@ -36,13 +36,13 @@ def ensure_app_workspace() -> dict[str, Path]:
         "documents": root / "Documents",
         "downloads": root / "Downloads",
         "skills": root / "Skills",
-        "system": root / ".clawchain",
-        "config": root / ".clawchain" / "config.json",
-        "sessions": root / ".clawchain" / "sessions",
-        "memory": root / ".clawchain" / "memory",
-        "knowledge": root / ".clawchain" / "knowledge",
-        "logs": root / ".clawchain" / "logs",
-        "backups": root / ".clawchain" / "backups",
+        "system": root / ".netclaw",
+        "config": root / ".netclaw" / "config.json",
+        "sessions": root / ".netclaw" / "sessions",
+        "memory": root / ".netclaw" / "memory",
+        "knowledge": root / ".netclaw" / "knowledge",
+        "logs": root / ".netclaw" / "logs",
+        "backups": root / ".netclaw" / "backups",
     }
     for key, path in dirs.items():
         if key == "config":
@@ -56,7 +56,7 @@ def load_authorized_dirs() -> set[str]:
     """加载用户授权的额外目录列表"""
     global _AUTHORIZED_DIRS, _AUTH_FILE
     root = get_app_workspace_root()
-    _AUTH_FILE = root / ".clawchain" / "authorized_dirs.json"
+    _AUTH_FILE = root / ".netclaw" / "authorized_dirs.json"
     if _AUTH_FILE.exists():
         try:
             with open(_AUTH_FILE, "r", encoding="utf-8") as f:

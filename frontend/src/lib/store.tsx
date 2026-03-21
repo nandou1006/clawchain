@@ -113,20 +113,20 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (typeof window === "undefined") return;
     try {
-      const saved = window.localStorage.getItem("clawchain.locale");
+      const saved = window.localStorage.getItem("netclaw.locale");
       if (saved === "zh-CN" || saved === "en-US") setLocaleState(saved);
     } catch {}
   }, []);
 
   const setLocale = useCallback((l: Locale) => {
     setLocaleState(l);
-    try { window.localStorage.setItem("clawchain.locale", l); } catch {}
+    try { window.localStorage.setItem("netclaw.locale", l); } catch {}
   }, []);
 
   // User ID and role management
   const setUserId = useCallback((id: string) => {
     setUserIdState(id);
-    try { window.localStorage.setItem("clawchain.userId", id); } catch {}
+    try { window.localStorage.setItem("netclaw.userId", id); } catch {}
   }, []);
 
   useEffect(() => {
@@ -142,7 +142,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (typeof window === "undefined") return;
     try {
-      const saved = window.localStorage.getItem("clawchain.agent");
+      const saved = window.localStorage.getItem("netclaw.agent");
       if (saved && typeof saved === "string" && saved.trim()) {
         setCurrentAgentId(saved.trim());
       }
@@ -155,11 +155,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (typeof window === "undefined") return;
     try {
-      const savedMode = window.localStorage.getItem("clawchain.inspector.mode");
+      const savedMode = window.localStorage.getItem("netclaw.inspector.mode");
       if (savedMode === "docked" || savedMode === "overlay" || savedMode === "hidden") {
         setInspectorPanelMode(savedMode);
       }
-      const savedWidth = Number(window.localStorage.getItem("clawchain.inspector.width") || "");
+      const savedWidth = Number(window.localStorage.getItem("netclaw.inspector.width") || "");
       if (Number.isFinite(savedWidth) && savedWidth >= 280 && savedWidth <= 720) {
         setInspectorWidth(savedWidth);
       }
@@ -171,7 +171,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (typeof window === "undefined") return;
     try {
-      window.localStorage.setItem("clawchain.inspector.mode", inspectorPanelMode);
+      window.localStorage.setItem("netclaw.inspector.mode", inspectorPanelMode);
     } catch {
       // ignore localStorage errors
     }
@@ -180,7 +180,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (typeof window === "undefined") return;
     try {
-      window.localStorage.setItem("clawchain.inspector.width", String(inspectorWidth));
+      window.localStorage.setItem("netclaw.inspector.width", String(inspectorWidth));
     } catch {
       // ignore localStorage errors
     }
@@ -324,7 +324,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const switchAgent = useCallback(async (agentId: string) => {
     // 保存当前 Agent 的状态（不要清空，只是切换）
     setCurrentAgentId(agentId);
-    try { window.localStorage.setItem("clawchain.agent", agentId); } catch {}
+    try { window.localStorage.setItem("netclaw.agent", agentId); } catch {}
     setCurrentSessionId(null);
     setInspectorFile(null);
     setInspectorFileLoading(false);

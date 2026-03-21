@@ -1,4 +1,4 @@
-# ClawChain 项目文档
+# NetClaw 项目文档
 
 本文档整合自 `docs/` 目录，用于帮助 Claude 理解项目结构、配置方式和运行机制。
 
@@ -122,7 +122,7 @@ npm install
 ### 配置建议
 
 - 在 `.env` 中维护密钥，`config.json` 使用 `${ENV_VAR}` 引用。
-- 项目环境变量前缀统一为 `CLAWCHAIN_*`。
+- 项目环境变量前缀统一为 `NETCLAW_*`。
 
 ### 常见错误与修复
 

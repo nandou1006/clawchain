@@ -1,4 +1,4 @@
-"""ClawChain CLI — setup / onboard / config / doctor / serve / start
+"""NetClaw CLI — setup / onboard / config / doctor / serve / start
 
 Usage:
     python cli.py setup          从模板创建数据目录与配置文件
@@ -155,7 +155,7 @@ def _is_config_ready(cfg: dict) -> bool:
 def cmd_setup(args: argparse.Namespace) -> None:
     from config import DATA_DIR, _config_path, TEMPLATE_PATH
 
-    _print_title("ClawChain Setup")
+    _print_title("NetClaw Setup")
     _print_status("INFO", f"数据目录: {DATA_DIR}")
     DATA_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -203,7 +203,7 @@ def cmd_onboard(args: argparse.Namespace) -> None:
 
     load_config()
     cfg = get_raw_config()
-    _print_title("ClawChain Onboard Wizard")
+    _print_title("NetClaw Onboard Wizard")
 
     # 1. Provider / Model
     _print_section("1/3 Provider 配置")
@@ -344,7 +344,7 @@ def cmd_doctor(args: argparse.Namespace) -> None:
     from config import load_config, _config_path, DATA_DIR, TEMPLATE_PATH, is_initialized
     from config_schema import validate_config
 
-    _print_title("ClawChain Doctor")
+    _print_title("NetClaw Doctor")
     issues = []
 
     # 1. 初始化状态
@@ -491,7 +491,7 @@ def cmd_serve(args: argparse.Namespace) -> None:
         port = 3716
         print(f"[serve] Sidecar 模式: http://{host}:{port}")
     else:
-        print(f"[serve] 启动 ClawChain 后端: http://{host}:{port}")
+        print(f"[serve] 启动 NetClaw 后端: http://{host}:{port}")
 
     uvicorn.run("app:app", host=host, port=port, reload=args.reload and not args.sidecar)
 
@@ -624,7 +624,7 @@ def cmd_clean(args: argparse.Namespace) -> None:
             pass
 
     mode = "deep" if args.clean else "runtime"
-    _print_title("ClawChain Clean")
+    _print_title("NetClaw Clean")
     _print_status("INFO", f"清理模式: {mode}")
     if removed:
         _print_status("OK", f"已清理 {len(removed)} 项")
@@ -644,8 +644,8 @@ def cmd_clean(args: argparse.Namespace) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        prog="clawchain",
-        description="ClawChain CLI",
+        prog="netclaw",
+        description="NetClaw CLI",
         formatter_class=argparse.RawTextHelpFormatter,
         epilog=(
             "Examples:\n"

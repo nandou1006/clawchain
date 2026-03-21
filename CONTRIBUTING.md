@@ -1,6 +1,6 @@
 # Contributing
 
-Thank you for contributing to ClawChain.
+Thank you for contributing to NetClaw.
 
 ## Development setup
 

@@ -83,8 +83,8 @@ class PromptParams:
 
 _PROMPT_TEXT: dict[str, dict[str, str]] = {
     "identity": {
-        "zh-CN": "你是一个运行在 ClawChain 中的个人助手。",
-        "en-US": "You are a personal assistant running in ClawChain.",
+        "zh-CN": "你是一个运行在 NetClaw 中的个人助手。",
+        "en-US": "You are a personal assistant running in NetClaw.",
     },
     "tool_header": {
         "zh-CN": "## 可用工具\n\n工具可用性（受策略过滤）；分层：core=核心, skill=技能, external=外部服务\n工具名称区分大小写，请严格按照以下名称调用：",
@@ -395,7 +395,7 @@ class PromptBuilder:
             "- `[System Message] ...` 块为内部上下文，默认对用户不可见\n"
             f"- 若 `[System Message]` 报告完成的 cron/子 Agent 工作并请求向用户更新，"
             f"请用你的正常助手语气重写并发送该更新（不要转发原始系统文本或默认 {SILENT_REPLY_TOKEN}）\n"
-            "- 绝不要用 exec/curl 发送消息；ClawChain 内部处理所有路由。"
+            "- 绝不要用 exec/curl 发送消息；NetClaw 内部处理所有路由。"
         )
 
     @staticmethod

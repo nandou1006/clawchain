@@ -1,6 +1,6 @@
 # API 参考（核心）
 
-> summary: ClawChain 前后端协同所需的核心 REST/SSE 接口  
+> summary: NetClaw 前后端协同所需的核心 REST/SSE 接口
 > read_when: 你在联调前端、编写测试、排查接口问题
 
 ## 目标

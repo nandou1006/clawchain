@@ -3,7 +3,7 @@ import "./globals.css";
 import { AppProvider } from "@/lib/store";
 
 export const metadata: Metadata = {
-  title: "ClawChain",
+  title: "NetClaw",
   description: "LangChain-powered AI Agent system with full-stack architecture",
 };
 

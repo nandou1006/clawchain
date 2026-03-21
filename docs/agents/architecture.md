@@ -1,6 +1,6 @@
 # Agent 架构
 
-> summary: 解释 ClawChain 的 LangGraph 执行流与前后端协同  
+> summary: 解释 NetClaw 的 LangGraph 执行流与前后端协同
 > read_when: 你要理解 `/chat` 流式处理、工具调用和子 Agent 机制
 
 ## 目标

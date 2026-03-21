@@ -1,6 +1,6 @@
 <div align="center">
-  <img src="images/clawchain_logo.png" alt="ClawChain" width="400">
-  <h1>ClawChain</h1>
+  <img src="images/netclaw_logo.png" alt="NetClaw" width="400">
+  <h1>NetClaw</h1>
   <p>
     <img src="https://img.shields.io/badge/python-≥3.11-blue" alt="Python">
     <img src="https://img.shields.io/badge/license-MIT-green" alt="License">
@@ -9,7 +9,7 @@
 
 ---
 
-**ClawChain** is a tribute to [OpenClaw](https://github.com/openclaw/openclaw) — a local AI agent engineering project built with LangChain / LangGraph.
+**NetClaw** is a tribute to [OpenClaw](https://github.com/openclaw/openclaw) — a local AI agent engineering project built with LangChain / LangGraph.
 
 **Positioning**: local-first, engineering-oriented, centered around Web + Desktop workflows.
 
@@ -20,7 +20,7 @@
 ## 🏗️ Architecture
 
 <p align="center">
-  <img src="images/clawchain_arch.png" alt="ClawChain Architecture" width="800">
+  <img src="images/netclaw_arch.png" alt="NetClaw Architecture" width="800">
 </p>
 
 ---

@@ -467,7 +467,7 @@ class AuthConfig(BaseModel):
 # Root Config
 # ---------------------------------------------------------------------------
 
-class ClawChainConfig(BaseModel):
+class NetClawConfig(BaseModel):
     agents: AgentsConfig = Field(default_factory=AgentsConfig)
     models: ModelsConfig = Field(default_factory=ModelsConfig)
     tools: ToolsConfig = Field(default_factory=ToolsConfig)
@@ -502,7 +502,7 @@ class ConfigValidationResult:
 
 def validate_config(raw: Dict[str, Any]) -> ConfigValidationResult:
     try:
-        parsed = ClawChainConfig.model_validate(raw)
+        parsed = NetClawConfig.model_validate(raw)
         return ConfigValidationResult(ok=True, config=parsed.model_dump(by_alias=True))
     except Exception as e:
         errors = []

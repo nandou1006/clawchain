@@ -1,4 +1,4 @@
-"""ClawChain 后端入口 — FastAPI + Uvicorn"""
+"""NetClaw 后端入口 — FastAPI + Uvicorn"""
 
 from __future__ import annotations
 
@@ -113,9 +113,9 @@ async def lifespan(application: FastAPI):
     logger.info("Heartbeat stopped")
 
 
-app = FastAPI(title="ClawChain", version="0.2.0", lifespan=lifespan)
+app = FastAPI(title="NetClaw", version="0.2.0", lifespan=lifespan)
 
-_cors_origins_env = os.getenv("CLAWCHAIN_CORS_ORIGINS", "").strip()
+_cors_origins_env = os.getenv("NETCLAW_CORS_ORIGINS", "").strip()
 if _cors_origins_env:
     _cors_origins = [o.strip() for o in _cors_origins_env.split(",") if o.strip()]
 else:
