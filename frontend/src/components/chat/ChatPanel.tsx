@@ -22,7 +22,9 @@ export default function ChatPanel() {
 
   const currentAgent = agents.find((a: any) => a.id === currentAgentId);
 
-  if (!currentSessionId || messages.length === 0) {
+  // 只有在没有 session 且没有消息时才显示欢迎界面
+  // 如果有消息（正在创建 session 或已有对话），显示消息列表
+  if (!currentSessionId && messages.length === 0) {
     return (
       <div className="h-full flex flex-col" style={{ background: "var(--bg)" }} data-testid="chat-panel">
         {/* Header with SessionList and Agent name */}

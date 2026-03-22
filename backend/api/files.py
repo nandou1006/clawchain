@@ -14,6 +14,17 @@ router = APIRouter()
 ALLOWED_PREFIXES = ("workspace/", "memory/", "skills/", "knowledge/")
 ALLOWED_ROOT_FILES = ("SKILLS_SNAPSHOT.md",)
 
+# 模板文件映射：如果请求的文件不存在，尝试从模板创建
+TEMPLATE_FILE_MAP = {
+    "workspace/SOUL.md": "SOUL.md",
+    "workspace/IDENTITY.md": "IDENTITY.md",
+    "workspace/USER.md": "USER.md",
+    "workspace/AGENTS.md": "AGENTS.md",
+    "workspace/TOOLS.md": "TOOLS.md",
+    "workspace/HEARTBEAT.md": "HEARTBEAT.md",
+    "workspace/BOOTSTRAP.md": "BOOTSTRAP.md",
+}
+
 
 def _validate_file_path(path: str, agent_id: str) -> Path:
     """验证文件路径，确保在白名单范围内"""
@@ -67,6 +78,19 @@ def _validate_file_path(path: str, agent_id: str) -> Path:
 @router.get("/agents/{agent_id}/files")
 async def read_file(agent_id: str, path: str = Query(...)):
     fp = _validate_file_path(path, agent_id)
+
+    # 如果文件不存在，尝试从模板创建
+    if not fp.exists():
+        template_name = TEMPLATE_FILE_MAP.get(path)
+        if template_name:
+            template_path = DATA_DIR / "templates" / template_name
+            if template_path.exists():
+                # 确保目录存在
+                fp.parent.mkdir(parents=True, exist_ok=True)
+                # 复制模板文件
+                import shutil
+                shutil.copy2(template_path, fp)
+
     if not fp.exists():
         raise HTTPException(404, f"文件不存在: {path}")
     try:

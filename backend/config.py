@@ -457,9 +457,16 @@ def resolve_agent_workspace(agent_id: str) -> Path:
     return resolve_agent_dir(agent_id) / "workspace"
 
 
-def resolve_agent_memory_dir(agent_id: str) -> Path:
-    """memory/ 在 workspace 内"""
-    return resolve_agent_dir(agent_id) / "workspace" / "memory"
+def resolve_agent_memory_dir(agent_id: str, user_id: str = "default") -> Path:
+    """memory/ 在 workspace 内，支持用户隔离。路径: workspace/memory/{user_id}/"""
+    base = resolve_agent_dir(agent_id) / "workspace"
+    return base / "memory" / user_id
+
+
+def resolve_agent_user_workspace(agent_id: str, user_id: str = "default") -> Path:
+    """用户专属工作区。路径: workspace/users/{user_id}/"""
+    base = resolve_agent_dir(agent_id) / "workspace"
+    return base / "users" / user_id
 
 
 def resolve_agent_skills_dir(agent_id: str) -> Path:
@@ -470,9 +477,8 @@ def resolve_agent_skills_dir(agent_id: str) -> Path:
 def resolve_agent_sessions_dir(agent_id: str, user_id: str = "default") -> Path:
     """Sessions 目录，支持用户隔离。路径: data/agents/{agent_id}/sessions/{user_id}/"""
     base = resolve_agent_dir(agent_id) / "sessions"
-    if user_id and user_id != "default":
-        return base / user_id
-    return base
+    effective_user_id = user_id or "default"
+    return base / effective_user_id
 
 
 def resolve_agent_knowledge_dir(agent_id: str) -> Path:

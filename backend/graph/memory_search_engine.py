@@ -99,7 +99,7 @@ class MemorySearchEngine:
         self.agent_dir = Path(agent_dir)
         self.agent_id = agent_id
         self.workspace_dir = self.agent_dir / "workspace"
-        self.memory_dir = self.workspace_dir / "memory"  # memory 在 workspace 内
+        self.memory_dir = self.workspace_dir / "memory"  # 用户隔离的记忆目录: workspace/memory/{user_id}/
         self.db_path = self.agent_dir / "storage" / "memory_index" / "memory.db"
         self._lock = threading.Lock()
         self._observer = None
@@ -552,12 +552,19 @@ class MemorySearchEngine:
         return chunks
 
     def _collect_md_files(self) -> list[Path]:
+        """收集所有 md 文件，包括用户隔离的记忆目录"""
         files = []
         memory_md = self.workspace_dir / "MEMORY.md"
         if memory_md.exists():
             files.append(memory_md)
-        if self.memory_dir.exists():
-            files.extend(sorted(self.memory_dir.rglob("*.md"), reverse=True))
+
+        # 用户隔离的记忆目录: workspace/memory/{user_id}/
+        memory_dir = self.workspace_dir / "memory"
+        if memory_dir.exists():
+            for user_dir in memory_dir.iterdir():
+                if user_dir.is_dir():
+                    files.extend(sorted(user_dir.rglob("*.md"), reverse=True))
+
         return files
 
     def _rel_path(self, filepath: Path) -> str:
@@ -585,9 +592,13 @@ class MemorySearchEngine:
         handler = _MemoryFileHandler(self)
         self._observer = Observer()
 
-        for watch_dir in [self.memory_dir, self.workspace_dir]:
-            if watch_dir.exists():
-                self._observer.schedule(handler, str(watch_dir), recursive=True)
+        # 监控 workspace 根目录（包含 MEMORY.md）
+        if self.workspace_dir.exists():
+            self._observer.schedule(handler, str(self.workspace_dir), recursive=True)
+
+        # 监控 memory 目录下的所有用户记忆目录
+        if self.memory_dir.exists():
+            self._observer.schedule(handler, str(self.memory_dir), recursive=True)
 
         self._observer.daemon = True
         self._observer.start()

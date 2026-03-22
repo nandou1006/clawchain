@@ -26,7 +26,19 @@ class SubagentSteerRequest(BaseModel):
 @router.get("/agents/{agent_id}/events")
 async def agent_events(agent_id: str):
     """SSE 端点：订阅 Agent 的生命周期事件"""
+    from config import list_agents
     from graph.agent import event_bus
+
+    # 检查 agent 是否存在
+    agent_ids = [a["id"] for a in list_agents()]
+    if agent_id not in agent_ids:
+        # 返回空流，避免为不存在的 agent 创建无限连接
+        async def empty_stream():
+            yield ": agent_not_found\n\n"
+        return StreamingResponse(
+            empty_stream(),
+            media_type="text/event-stream",
+        )
 
     queue = event_bus.subscribe(agent_id)
 
@@ -196,13 +208,13 @@ async def list_subagents(
     minutes = max(1, min(24 * 60, minutes))  # 限制 1 ~ 1440
     cutoff = time_module.time() - minutes * 60
 
-    main_sid = session_manager.resolve_main_session_id(agent_id)
+    # 如果没有提供 session_id，返回空列表（没有主会话概念）
     if not session_id or not (session_id or "").strip():
-        root_session_key = session_manager.session_key_from_session_id(agent_id, main_sid)
-    else:
-        root_session_key = session_manager.session_key_from_session_id(
-            agent_id, session_id.strip()
-        )
+        return {"tree": [], "flat": [], "include_recent_minutes": minutes}
+
+    root_session_key = session_manager.session_key_from_session_id(
+        agent_id, session_id.strip()
+    )
     tree = _build_subagent_tree(
         registry,
         session_manager,

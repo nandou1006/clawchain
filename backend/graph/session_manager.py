@@ -85,37 +85,26 @@ class SessionManager:
             pass
 
     # ------------------------------------------------------------------
-    # 主会话 — 每个 Agent 有且仅有一个主会话
+    # Session ID 生成
     # ------------------------------------------------------------------
 
     @staticmethod
-    def resolve_main_session_id(agent_id: str, user_id: str = "") -> str:
-        """返回 Agent 的固定主会话 ID（用于文件命名）"""
-        return f"{agent_id}-main"
-
-    @staticmethod
     def session_key_from_session_id(agent_id: str, session_id: str) -> str:
-        """session_id -> session_key（agent:agentId:main / agent:agentId:subagent:xxx）"""
-        main_sid = f"{agent_id}-main"
-        if session_id == main_sid:
-            return f"agent:{agent_id}:main"
-        return f"agent:{agent_id}:subagent:{session_id}"
+        """session_id -> session_key（统一格式：agent:agentId:session:sessionId）"""
+        return f"agent:{agent_id}:session:{session_id}"
 
     @staticmethod
     def session_id_from_session_key(session_key: str) -> tuple[str, str] | None:
-        """session_key -> (agent_id, session_id)。主会话 session_id=agent_id-main；子会话 session_id=subagent-xxx"""
+        """session_key -> (agent_id, session_id)"""
         parts = (session_key or "").strip().split(":")
-        if len(parts) < 3:
+        if len(parts) < 4:
             return None
         if parts[0].lower() != "agent":
             return None
         agent_id = parts[1]
-        rest = ":".join(parts[2:])
-        if rest == "main":
-            return (agent_id, f"{agent_id}-main")
-        if len(parts) >= 4 and parts[2].lower() == "subagent":
-            return (agent_id, parts[3])  # session_id = subagent-xxx
-        return (agent_id, rest)
+        if parts[2].lower() != "session":
+            return None
+        return (agent_id, parts[3])
 
     # ------------------------------------------------------------------
     # 读取
@@ -449,8 +438,6 @@ class SessionManager:
                         pass
 
         # 2. 若仍超限，按 updatedAt 从最旧开始删 store 条目及对应 transcript
-        main_sid = self.resolve_main_session_id(agent_id)
-        main_key = self.session_key_from_session_id(agent_id, main_sid)
         keys_sorted = sorted(
             store.keys(),
             key=lambda k: store.get(k, {}).get("updatedAt") or 0,
@@ -458,8 +445,6 @@ class SessionManager:
         for key in keys_sorted:
             if total <= high_bytes:
                 break
-            if key == main_key:
-                continue
             entry = store.get(key, {})
             if not entry:
                 continue
@@ -558,7 +543,7 @@ class SessionManager:
                 entry = store.get(key, {})
                 sid = entry.get("sessionId")
                 if sid:
-                    path = self._session_path(sid, agent_id)
+                    path = self._session_path(sid, agent_id, effective_user_id)
                     if path.exists():
                         try:
                             archive_dir = path.parent / "archive"
@@ -609,37 +594,17 @@ class SessionManager:
         user_id: str = "default",
         spawned_by_session_key: str | None = None,
     ) -> list[dict[str, Any]]:
-        """列出会话。优先从 sessions.json 索引读取并按 updatedAt 排序。
+        """列出会话。从 sessions.json 索引读取并按 updatedAt 排序。
         spawned_by_session_key: 仅返回该 requester 派生的子会话。"""
         effective_user_id = user_id or "default"
         sessions_dir = resolve_agent_sessions_dir(agent_id, effective_user_id)
         store = self._load_session_store(agent_id, effective_user_id)
-        main_sid = self.resolve_main_session_id(agent_id)
-        main_key = self.session_key_from_session_id(agent_id, main_sid)
 
-        # 确保主会话在 store 中
-        if main_key not in store:
-            main_data = self.load_session(main_sid, agent_id, effective_user_id)
-            if main_data:
-                if isinstance(main_data, list):
-                    main_data = {"messages": main_data, "label": "未命名"}
-            else:
-                main_data = {"messages": [], "label": "主会话", "created_at": 0, "updated_at": 0}
-            self._update_session_store_entry(
-                agent_id, main_key, main_sid,
-                main_data.get("updated_at", time.time()),
-                user_id=effective_user_id,
-                label=main_data.get("label", "主会话"),
-            )
-            store[main_key] = {
-                "sessionId": main_sid,
-                "updatedAt": int((main_data.get("updated_at") or 0) * 1000),
-                "label": main_data.get("label", "主会话"),
-            }
-
-        # 扫描 subagent-*.json，补充 store 中缺失的
+        # 扫描 *.json（除了 sessions.json），补充 store 中缺失的
         if sessions_dir.exists():
-            for fp in sessions_dir.glob("subagent-*.json"):
+            for fp in sessions_dir.glob("*.json"):
+                if fp.name == "sessions.json":
+                    continue
                 session_id = fp.stem
                 sk = self.session_key_from_session_id(agent_id, session_id)
                 if sk not in store:
@@ -679,13 +644,10 @@ class SessionManager:
                 continue
             session_id = entry.get("sessionId", "")
             data = self.load_session(session_id, agent_id, effective_user_id)
-            if data is None and session_id != main_sid:
+            if data is None:
                 continue
-            if data:
-                if isinstance(data, list):
-                    data = {"messages": data, "label": "未命名"}
-            else:
-                data = {"messages": [], "label": "主会话", "created_at": 0, "updated_at": 0}
+            if isinstance(data, list):
+                data = {"messages": data, "label": "未命名"}
             resolved_title = self.derive_session_title(
                 data,
                 session_id=session_id,

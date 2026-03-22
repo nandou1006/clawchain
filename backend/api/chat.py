@@ -41,8 +41,14 @@ async def _event_generator(req: ChatRequest) -> AsyncGenerator[str, None]:
     from graph.session_manager import session_manager
     from graph.message_queue import message_queue_manager
 
+    # 如果没有 session_id，返回错误（前端应该先创建 session）
     if not req.session_id:
-        req.session_id = session_manager.resolve_main_session_id(req.agent_id, user_id=req.user_id)
+        error_data = json.dumps({
+            "type": "error",
+            "error": "session_id is required. Please create a session first.",
+        }, ensure_ascii=False)
+        yield f"event: error\ndata: {error_data}\n\n"
+        return
 
     queue = message_queue_manager.get_queue(req.agent_id, req.session_id, user_id=req.user_id)
 
@@ -114,6 +120,7 @@ async def _stream_turn(req: ChatRequest, queue: Any) -> AsyncGenerator[str, None
             message=req.message,
             session_id=req.session_id,
             agent_id=req.agent_id,
+            user_id=req.user_id,
         ):
             if event.get("type") == "token":
                 partial_text += event.get("content", "") or ""
@@ -171,7 +178,7 @@ async def _stream_turn(req: ChatRequest, queue: Any) -> AsyncGenerator[str, None
     if is_first_message and not _should_skip_auto_title(req.message):
         title = await _generate_title(req.message, req.agent_id)
         if title:
-            session_manager.rename_session(req.session_id, req.agent_id, title)
+            session_manager.rename_session(req.session_id, req.agent_id, title, user_id=req.user_id)
             title_data = json.dumps(
                 {"type": "title", "session_id": req.session_id, "title": title},
                 ensure_ascii=False,

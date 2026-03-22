@@ -2,6 +2,32 @@ const API_BASE = typeof window !== "undefined"
   ? `http://${window.location.hostname}:8002/api`
   : "http://localhost:8002/api";
 
+// 默认请求超时时间（毫秒）
+const DEFAULT_TIMEOUT = 30000;
+
+/**
+ * 带超时的 fetch 封装
+ * 防止请求无限等待，导致前端卡住
+ */
+async function fetchWithTimeout(
+  url: string,
+  options: RequestInit = {},
+  timeout: number = DEFAULT_TIMEOUT
+): Promise<Response> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeout);
+
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    });
+    return response;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 export interface SSEEvent {
   type: string;
   content?: string;
@@ -68,7 +94,7 @@ async function readErrorMessage(resp: Response): Promise<string> {
 
 /** Get chat timeout config. timeoutSeconds=0 means no timeout */
 export async function fetchChatTimeout(): Promise<{ timeoutSeconds: number }> {
-  const resp = await fetch(`${API_BASE}/config/chat`);
+  const resp = await fetchWithTimeout(`${API_BASE}/config/chat`);
   return resp.json();
 }
 
@@ -77,7 +103,7 @@ export async function streamChat(
   sessionId: string,
   agentId: string,
   onEvent: (event: SSEEvent) => void,
-  opts?: { signal?: AbortSignal; timeoutMs?: number },
+  opts?: { signal?: AbortSignal; timeoutMs?: number; userId?: string },
 ): Promise<void> {
   const { signal: userSignal, timeoutMs } = opts ?? {};
   const controller = new AbortController();
@@ -149,7 +175,13 @@ export async function streamChat(
     const resp = await fetch(`${API_BASE}/chat`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message, session_id: sessionId, agent_id: agentId, stream: true }),
+      body: JSON.stringify({
+        message,
+        session_id: sessionId,
+        agent_id: agentId,
+        stream: true,
+        user_id: opts?.userId || "",
+      }),
       signal: effectiveSignal,
     });
     if (!resp.ok) throw new Error(`Chat failed: ${resp.status}`);
@@ -169,7 +201,7 @@ export async function streamChat(
 export async function abortChat(
   agentId: string,
   sessionId: string,
-  opts?: { clearFollowups?: boolean; userInitiated?: boolean },
+  opts?: { clearFollowups?: boolean; userInitiated?: boolean; userId?: string },
 ): Promise<{ aborted: boolean; pending_followups: number; cleared_followups: number }> {
   const resp = await fetch(`${API_BASE}/chat/abort`, {
     method: "POST",
@@ -179,6 +211,7 @@ export async function abortChat(
       session_id: sessionId,
       clear_followups: Boolean(opts?.clearFollowups),
       user_initiated: opts?.userInitiated !== false, // 默认为 true
+      user_id: opts?.userId || "",
     }),
   });
   if (!resp.ok) {
@@ -190,21 +223,21 @@ export async function abortChat(
 // ---------- REST API ----------
 
 export async function fetchAgents(): Promise<any[]> {
-  const resp = await fetch(`${API_BASE}/agents`);
+  const resp = await fetchWithTimeout(`${API_BASE}/agents`);
   return resp.json();
 }
 
 // ---------- User API ----------
 
-export async function fetchUserInfo(userId: string): Promise<{ id: string; role: string; name?: string }> {
-  const resp = await fetch(`${API_BASE}/auth/user/${encodeURIComponent(userId)}`);
+export async function fetchUserInfo(userId: string): Promise<{ id: string; role: string | null | undefined; name?: string }> {
+  const resp = await fetchWithTimeout(`${API_BASE}/auth/user/${encodeURIComponent(userId)}`);
   if (!resp.ok) throw new Error("Failed to fetch user info");
   return resp.json();
 }
 
 export async function fetchSessions(agentId: string, userId?: string): Promise<any[]> {
   const params = userId ? `?user_id=${encodeURIComponent(userId)}` : "";
-  const resp = await fetch(`${API_BASE}/agents/${agentId}/sessions${params}`);
+  const resp = await fetchWithTimeout(`${API_BASE}/agents/${agentId}/sessions${params}`);
   return resp.json();
 }
 
@@ -326,32 +359,53 @@ export async function runCronJob(jobId: string) {
 
 // --- Main Session API ---
 
+export async function createSession(agentId: string, userId?: string): Promise<{ session_id: string; agent_id: string; user_id: string }> {
+  const params = userId ? `?user_id=${encodeURIComponent(userId)}` : "";
+  const resp = await fetchWithTimeout(`${API_BASE}/agents/${agentId}/session${params}`, {
+    method: "POST",
+  });
+  if (!resp.ok) throw new Error("Failed to create session");
+  return resp.json();
+}
+
 export async function fetchMainSession(agentId: string) {
-  const resp = await fetch(`${API_BASE}/agents/${agentId}/session`);
+  const resp = await fetchWithTimeout(`${API_BASE}/agents/${agentId}/session`);
   return resp.json();
 }
 
 export async function fetchMainSessionMessages(agentId: string) {
-  const resp = await fetch(`${API_BASE}/agents/${agentId}/session/messages`);
+  const resp = await fetchWithTimeout(`${API_BASE}/agents/${agentId}/session/messages`);
   return resp.json();
 }
 
 export async function resetMainSession(agentId: string) {
-  const resp = await fetch(`${API_BASE}/agents/${agentId}/session/reset`, {
+  const resp = await fetchWithTimeout(`${API_BASE}/agents/${agentId}/session/reset`, {
     method: "POST",
   });
+  return resp.json();
+}
+
+export async function fetchSession(agentId: string, sessionId: string) {
+  const resp = await fetchWithTimeout(`${API_BASE}/agents/${agentId}/session/${sessionId}`);
+  if (!resp.ok) throw new Error("Failed to fetch session");
+  return resp.json();
+}
+
+export async function fetchSessionMessages(agentId: string, sessionId: string) {
+  const resp = await fetchWithTimeout(`${API_BASE}/agents/${agentId}/session/${sessionId}/messages`);
+  if (!resp.ok) throw new Error("Failed to fetch session messages");
   return resp.json();
 }
 
 // --- Model API ---
 
 export async function fetchModels() {
-  const resp = await fetch(`${API_BASE}/models`);
+  const resp = await fetchWithTimeout(`${API_BASE}/models`);
   return resp.json();
 }
 
 export async function fetchCurrentModel(agentId: string) {
-  const resp = await fetch(`${API_BASE}/models/current/${agentId}`);
+  const resp = await fetchWithTimeout(`${API_BASE}/models/current/${agentId}`);
   return resp.json();
 }
 
@@ -533,12 +587,19 @@ export function subscribeAgentEvents(
   const baseDelay = 1000; // 1 second
   let es: EventSource | null = null;
   let closed = false;
+  let reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
 
   function connect() {
     if (closed) return;
     es = new EventSource(url);
 
     es.onmessage = (evt) => {
+      // 检查是否是 agent_not_found 事件
+      if (evt.data === "agent_not_found") {
+        es?.close();
+        onError?.(new Error(`Agent ${agentId} not found`));
+        return;
+      }
       retryCount = 0; // Reset retry count on success
       try {
         const parsed = JSON.parse(evt.data) as SSEEvent;
@@ -562,7 +623,7 @@ export function subscribeAgentEvents(
       retryCount++;
 
       es?.close();
-      setTimeout(connect, delay);
+      reconnectTimeout = setTimeout(connect, delay);
     };
   }
 
@@ -570,6 +631,9 @@ export function subscribeAgentEvents(
 
   return () => {
     closed = true;
+    if (reconnectTimeout) {
+      clearTimeout(reconnectTimeout);
+    }
     es?.close();
   };
 }
@@ -599,7 +663,7 @@ export async function fetchConfigPath(): Promise<{ path: string }> {
 }
 
 export async function fetchInitStatus(): Promise<InitStatus> {
-  const resp = await fetch(`${API_BASE}/init/status`);
+  const resp = await fetchWithTimeout(`${API_BASE}/init/status`);
   if (!resp.ok) throw new Error(await readErrorMessage(resp));
   return resp.json();
 }

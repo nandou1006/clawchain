@@ -13,7 +13,7 @@ router = APIRouter()
 class UserInfoResponse(BaseModel):
     """用户信息响应"""
     id: str
-    role: str
+    role: Optional[str] = None  # None 表示用户不存在
     name: Optional[str] = None
 
 
@@ -25,19 +25,19 @@ def get_user_id_from_request(request: Request) -> str:
     return user_id or ""
 
 
-def get_user_role(user_id: str) -> str:
-    """查询用户角色，供前端判断页面路由"""
+def get_user_role(user_id: str) -> Optional[str]:
+    """查询用户角色，供前端判断页面路由。返回 None 表示用户不存在"""
     from config import get_config
     cfg = get_config()
     users = cfg.get("auth", {}).get("users", {}).get("users", [])
     for user in users:
         if user.get("id") == user_id:
             return user.get("role", "user")
-    return "user"
+    return None  # 用户不存在
 
 
 def get_user_info(user_id: str) -> dict:
-    """获取用户完整信息"""
+    """获取用户完整信息，返回 role=None 表示用户不存在"""
     from config import get_config
     cfg = get_config()
     users = cfg.get("auth", {}).get("users", {}).get("users", [])
@@ -48,7 +48,8 @@ def get_user_info(user_id: str) -> dict:
                 "role": user.get("role", "user"),
                 "name": user.get("name"),
             }
-    return {"id": user_id, "role": "user", "name": None}
+    # 用户不存在
+    return {"id": user_id, "role": None, "name": None}
 
 
 def verify_api_key(request: Request) -> bool:

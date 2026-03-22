@@ -13,7 +13,7 @@ TEMPLATES_DIR = DATA_DIR / "templates"
 WORKSPACE_SUBDIRS = [
     "workspace",
     "workspace/skills",  # skills 在 workspace 内，Agent 可自写
-    "workspace/memory",  # 每日笔记，在 workspace 内
+    "workspace/memory",  # 每日记忆存储目录
     "knowledge",
     "sessions/archive",
     "storage/memory_index",
@@ -44,22 +44,6 @@ def _migrate_legacy_skills(agent_dir: Path) -> None:
                 shutil.copytree(skill_dir, dest)
 
 
-def _migrate_legacy_memory(agent_dir: Path) -> None:
-    """将旧版 agent_dir/memory 迁移到 workspace/memory"""
-    legacy = agent_dir / "memory"
-    target = agent_dir / "workspace" / "memory"
-    if not legacy.exists() or legacy == target:
-        return
-    target.mkdir(parents=True, exist_ok=True)
-    for fp in legacy.rglob("*"):
-        if fp.is_file():
-            rel = fp.relative_to(legacy)
-            dest = target / rel
-            if not dest.exists():
-                dest.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(fp, dest)
-
-
 def ensure_agent_workspace(agent_id: str, *, include_bootstrap: bool = True) -> Path:
     """
     确保 Agent 工作区目录存在并包含所有模板文件。
@@ -72,7 +56,6 @@ def ensure_agent_workspace(agent_id: str, *, include_bootstrap: bool = True) -> 
         (agent_dir / subdir).mkdir(parents=True, exist_ok=True)
 
     _migrate_legacy_skills(agent_dir)
-    _migrate_legacy_memory(agent_dir)
 
     for dest_rel, template_name in TEMPLATE_FILES.items():
         if not include_bootstrap and template_name == "BOOTSTRAP.md":

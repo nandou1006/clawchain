@@ -16,11 +16,15 @@ function HomeContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const userId = searchParams.get("user_id");
+  const agentId = searchParams.get("agent_id");
+  const sessionId = searchParams.get("session_id");
 
   const {
     loadAgents,
-    loadMainSession,
+    loadSession,
     setUserId,
+    setCurrentAgentId,
+    setCurrentSessionId,
     userRole,
     inspectorWidth,
     setInspectorWidth,
@@ -34,20 +38,31 @@ function HomeContent() {
   } = useApp();
   const initCheckedRef = useRef(false);
 
-  // 无user_id时跳转到错误页面
+  // 所有 useEffect 必须在条件语句之前
   useEffect(() => {
     if (!userId) {
       router.push("/unauthorized");
       return;
     }
     setUserId(userId);
-  }, [userId, router, setUserId]);
+    if (agentId) {
+      setCurrentAgentId(agentId);
+    }
+    if (sessionId) {
+      setCurrentSessionId(sessionId);
+    }
+  }, [userId, agentId, sessionId, router, setUserId, setCurrentAgentId, setCurrentSessionId]);
 
   useEffect(() => {
     if (!userId) return;
     loadAgents();
-    loadMainSession();
-  }, [userId, loadAgents, loadMainSession]);
+  }, [userId, loadAgents]);
+
+  // 当 sessionId 变化时加载会话消息
+  useEffect(() => {
+    if (!userId || !sessionId) return;
+    loadSession();
+  }, [userId, sessionId, loadSession]);
 
   useEffect(() => {
     if (initCheckedRef.current) return;
@@ -70,8 +85,30 @@ function HomeContent() {
     return () => clearTimeout(timer);
   }, [uiNotice, clearNotice]);
 
+  // 无 user_id 时返回 null（useEffect 会处理跳转）
   if (!userId) {
     return null;
+  }
+
+  // 正在获取用户角色时显示加载状态
+  if (userRole === null) {
+    return (
+      <div className="h-screen flex items-center justify-center" style={{ background: "var(--bg)" }}>
+        <div className="text-sm" style={{ color: "var(--text-muted)" }}>Loading...</div>
+      </div>
+    );
+  }
+
+  // 用户不在配置中，显示无权限
+  if (userRole === undefined) {
+    return (
+      <div className="h-screen flex items-center justify-center" style={{ background: "var(--bg)" }}>
+        <div className="text-center">
+          <div className="text-lg font-medium mb-2" style={{ color: "var(--error)" }}>没有权限访问</div>
+          <div className="text-sm" style={{ color: "var(--text-muted)" }}>用户 "{userId}" 未在系统中注册</div>
+        </div>
+      </div>
+    );
   }
 
   // 是否为管理员

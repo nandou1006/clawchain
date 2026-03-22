@@ -21,13 +21,15 @@ interface AppState {
   // User
   userId: string;
   setUserId: (id: string) => void;
-  userRole: "admin" | "user" | null;
+  userRole: "admin" | "user" | null | undefined;  // null=loading, undefined=not found
 
   // Agent
   agents: any[];
   currentAgentId: string;
   currentSessionId: string | null;
   currentModel: any | null;
+  setCurrentAgentId: (id: string) => void;
+  setCurrentSessionId: (id: string | null) => void;
 
   // Chat (from useChat)
   messages: ReturnType<typeof useChat>["messages"];
@@ -79,7 +81,7 @@ interface AppState {
   // Actions
   loadAgents: () => Promise<void>;
   switchAgent: (agentId: string) => Promise<void>;
-  loadMainSession: () => Promise<void>;
+  loadSession: () => Promise<void>;
   skillsRefreshTrigger: number;
   triggerSkillsRefresh: () => void;
 }
@@ -89,7 +91,7 @@ const AppContext = createContext<AppState | null>(null);
 export function AppProvider({ children }: { children: React.ReactNode }) {
   // User state
   const [userId, setUserIdState] = useState<string>("");
-  const [userRole, setUserRole] = useState<"admin" | "user" | null>(null);
+  const [userRole, setUserRole] = useState<"admin" | "user" | null | undefined>(null);
 
   const [agents, setAgents] = useState<any[]>([]);
   const [currentAgentId, setCurrentAgentId] = useState("main");
@@ -129,13 +131,42 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     try { window.localStorage.setItem("netclaw.userId", id); } catch {}
   }, []);
 
+  // Agent and Session setters
+  const setCurrentAgentIdState = useCallback((id: string) => {
+    setCurrentAgentId(id);
+  }, []);
+
+  const setCurrentSessionIdState = useCallback((id: string | null) => {
+    setCurrentSessionId(id);
+  }, []);
+
   useEffect(() => {
     if (!userId) return;
+
+    // 设置加载超时，防止无限等待
+    const timeoutId = setTimeout(() => {
+      if (userRole === null) {
+        console.warn("[NetClaw] 用户信息加载超时，请检查后端服务是否正常");
+        setUserRole(undefined);
+      }
+    }, 10000); // 10 秒超时
+
     api.fetchUserInfo(userId).then((info) => {
-      setUserRole(info.role as "admin" | "user");
-    }).catch(() => {
-      setUserRole("user");
+      clearTimeout(timeoutId);
+      // info.role 可能是 null（用户不存在）、"admin" 或 "user"
+      // null 表示用户不存在，转为 undefined
+      if (info.role === null) {
+        setUserRole(undefined);
+      } else {
+        setUserRole(info.role as "admin" | "user");
+      }
+    }).catch((error) => {
+      clearTimeout(timeoutId);
+      console.error("[NetClaw] 获取用户信息失败:", error);
+      setUserRole(undefined);  // 请求失败也视为用户不存在
     });
+
+    return () => clearTimeout(timeoutId);
   }, [userId]);
 
   // 持久化 currentAgentId（Hydration 安全：初始 "main"，useEffect 恢复）
@@ -269,18 +300,22 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setAgents(data);
   }, []);
 
-  const loadMainSession = useCallback(async () => {
-    try {
-      const session = await api.fetchMainSession(currentAgentId);
-      setCurrentSessionId(session.session_id);
-      await chat.loadMessages(currentAgentId, session.session_id);
-      const model = await api.fetchCurrentModel(currentAgentId);
-      setCurrentModel(model);
-    } catch {
-      chat.setMessages([]);
+  const loadSession = useCallback(async () => {
+    // 如果有 session_id，加载对应会话的消息
+    if (currentSessionId) {
+      try {
+        await chat.loadMessages(currentAgentId, currentSessionId);
+        const model = await api.fetchCurrentModel(currentAgentId);
+        setCurrentModel(model);
+      } catch {
+        chat.setMessages([]);
+      }
+      return;
     }
+    // 无 session_id 时，保持空白状态（不自动加载任何会话）
+    chat.setMessages([]);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentAgentId]);
+  }, [currentAgentId, currentSessionId]);
 
   const chat = useChat(
     currentAgentId,
@@ -288,59 +323,65 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setCurrentSessionId,
     {
       onAgentCreated: loadAgents,
-      onSessionCompacted: loadMainSession,
+      onSessionCompacted: loadSession,
       onTurnComplete: triggerSkillsRefresh,
       formatCommandResponse,
+      onSessionCreated: (sessionId: string) => {
+        // 跳转到带 session_id 的 URL
+        const url = `/?user_id=${userId}&agent_id=${currentAgentId}&session_id=${sessionId}`;
+        window.history.pushState({}, "", url);
+      },
+      userId,
     },
   );
 
   const { runningSubagents } = useSubagents(
     currentAgentId,
     currentSessionId,
-    loadMainSession,
+    loadSession,
   );
 
   // 订阅 Agent 事件：技能热加载、危险工具执行提示、exec 确认、心跳/定时消息
   useEffect(() => {
     if (!currentAgentId) return;
-    const unsub = api.subscribeAgentEvents(currentAgentId, (event) => {
-      if (event.type === "lifecycle" && event.event === "skills_updated") {
-        triggerSkillsRefresh();
-      }
-      if (event.type === "heartbeat_message") {
-        loadMainSession();
-      }
-      if (event.type === "lifecycle" && event.event === "approval_required") {
-        const ev = event as any;
-        const aid = ev.approval_id || "";
-        const tool = ev.tool || "exec";
-        const preview = ev.input_preview || "";
-        if (aid) setPendingApproval({ approval_id: aid, tool, input_preview: preview });
-      }
+    let unsub: (() => void) | null = null;
+
+    // 使用 RAF 确保在 StrictMode 下只创建一个连接
+    let mounted = true;
+    const rafId = requestAnimationFrame(() => {
+      if (!mounted) return;
+      unsub = api.subscribeAgentEvents(currentAgentId, (event) => {
+        if (event.type === "lifecycle" && event.event === "skills_updated") {
+          triggerSkillsRefresh();
+        }
+        if (event.type === "heartbeat_message") {
+          loadSession();
+        }
+        if (event.type === "lifecycle" && event.event === "approval_required") {
+          const ev = event as any;
+          const aid = ev.approval_id || "";
+          const tool = ev.tool || "exec";
+          const preview = ev.input_preview || "";
+          if (aid) setPendingApproval({ approval_id: aid, tool, input_preview: preview });
+        }
+      });
     });
-    return unsub;
-  }, [currentAgentId, triggerSkillsRefresh, loadMainSession]);
+
+    return () => {
+      mounted = false;
+      cancelAnimationFrame(rafId);
+      if (unsub) unsub();
+    };
+  }, [currentAgentId, triggerSkillsRefresh, loadSession]);
 
   const switchAgent = useCallback(async (agentId: string) => {
-    // 保存当前 Agent 的状态（不要清空，只是切换）
+    // 切换 Agent，清空 session，保持空白状态
     setCurrentAgentId(agentId);
     try { window.localStorage.setItem("netclaw.agent", agentId); } catch {}
     setCurrentSessionId(null);
     setInspectorFile(null);
     setInspectorFileLoading(false);
-
-    // 加载新 Agent 的会话和消息
-    try {
-      const session = await api.fetchMainSession(agentId);
-      setCurrentSessionId(session.session_id);
-      // 加载消息时会自动恢复该 Agent 的 isStreaming 状态
-      await chat.loadMessages(agentId, session.session_id);
-      const model = await api.fetchCurrentModel(agentId);
-      setCurrentModel(model);
-    } catch {
-      // 如果加载失败，清空该 Agent 的消息
-      chat.setMessages([]);
-    }
+    chat.setMessages([]);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chat]);
 
@@ -400,6 +441,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     currentAgentId,
     currentSessionId,
     currentModel,
+    setCurrentAgentId: setCurrentAgentIdState,
+    setCurrentSessionId: setCurrentSessionIdState,
 
     messages: chat.messages,
     isStreaming: chat.isStreaming,
@@ -443,7 +486,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
     loadAgents,
     switchAgent,
-    loadMainSession,
+    loadSession,
     skillsRefreshTrigger,
     triggerSkillsRefresh,
   };

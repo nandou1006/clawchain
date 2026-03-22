@@ -31,6 +31,8 @@ interface UseChatOptions {
   onSubagentEvent?: () => void;
   onTurnComplete?: () => void;
   formatCommandResponse?: (raw: string) => string;
+  onSessionCreated?: (sessionId: string) => void;
+  userId?: string;
 }
 
 export function useChat(
@@ -87,7 +89,7 @@ export function useChat(
 
   const loadMessages = useCallback(async (agentId: string, sessionId: string) => {
     try {
-      const data = await api.fetchMainSessionMessages(agentId);
+      const data = await api.fetchSessionMessages(agentId, sessionId);
       const now = Date.now();
       const msgs: ChatMessage[] = (data.messages || []).map((m: any, i: number) => ({
         id: `${sessionId}-${i}`,
@@ -115,19 +117,6 @@ export function useChat(
   const sendMessage = useCallback(async (text: string) => {
     if (!text.trim() || isStreaming) return;
 
-    let sessionId = currentSessionId;
-    if (!sessionId) {
-      try {
-        const session = await api.fetchMainSession(currentAgentId);
-        sessionId = session.session_id;
-        setCurrentSessionId(sessionId);
-        setSessionError(null);
-      } catch (e: any) {
-        setSessionError(e.message || "Failed to fetch session");
-        return;
-      }
-    }
-
     const now = Date.now();
     const userMsg: ChatMessage = {
       id: `user-${now}`,
@@ -147,8 +136,27 @@ export function useChat(
     const assistantMsgId = assistantMsg.id;
     streamingAssistantIdRef.current = assistantMsgId;
 
+    // 立即显示用户消息和占位 assistant 消息，不等待 session 创建
     setMessages(prev => [...prev, userMsg, assistantMsg]);
     setIsStreaming(true);
+
+    let sessionId = currentSessionId;
+    if (!sessionId) {
+      // 无 session_id 时，创建新 session（UUID 由后端生成）
+      try {
+        const newSession = await api.createSession(currentAgentId, options?.userId);
+        sessionId = newSession.session_id;
+        setCurrentSessionId(sessionId);
+        // 通知外部进行 URL 跳转
+        options?.onSessionCreated?.(sessionId);
+      } catch (e: any) {
+        setSessionError(e.message || "Failed to create session");
+        // 创建 session 失败时，移除占位消息
+        setMessages(prev => prev.filter(m => m.id !== userMsg.id && m.id !== assistantMsgId));
+        setIsStreaming(false);
+        return;
+      }
+    }
 
     const controller = new AbortController();
     abortRef.current = controller;
@@ -357,6 +365,21 @@ export function useChat(
             break;
           }
 
+          case "session_new": {
+            // /new or /reset: 创建了新会话，需要更新 session_id 并跳转
+            setLifecycleEvents([]);
+            setLastUsage(null);
+            const newSessionId = event.new_session_id;
+            if (newSessionId) {
+              setCurrentSessionId(newSessionId);
+              // 通知外部进行 URL 跳转
+              options?.onSessionCreated?.(newSessionId);
+            }
+            // 清空消息，准备接收新会话的问候
+            setMessages([]);
+            break;
+          }
+
           case "session_compacted":
             options?.onSessionCompacted?.();
             break;
@@ -440,7 +463,7 @@ export function useChat(
             });
             break;
         }
-      }, { signal: controller.signal, timeoutMs });
+      }, { signal: controller.signal, timeoutMs, userId: options?.userId });
     } catch (e: any) {
       if (e.name !== "AbortError") {
         terminalErrorReceived = true;
@@ -499,7 +522,7 @@ export function useChat(
     const sessionId = currentSessionId;
     if (sessionId) {
       try {
-        await api.abortChat(currentAgentId, sessionId, { userInitiated: true });
+        await api.abortChat(currentAgentId, sessionId, { userInitiated: true, userId: options?.userId });
       } catch {
         // 后端 abort 失败时，降级为前端本地断流。
       }

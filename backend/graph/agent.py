@@ -179,11 +179,12 @@ class LifecycleHooks:
 class EventBus:
     """简易事件总线，支持 SSE 订阅"""
 
-    def __init__(self):
+    def __init__(self, max_queue_size: int = 100):
         self._queues: dict[str, list[asyncio.Queue]] = {}
+        self._max_queue_size = max_queue_size
 
     def subscribe(self, agent_id: str) -> asyncio.Queue:
-        queue: asyncio.Queue = asyncio.Queue()
+        queue: asyncio.Queue = asyncio.Queue(maxsize=self._max_queue_size)
         self._queues.setdefault(agent_id, []).append(queue)
         return queue
 
@@ -191,13 +192,21 @@ class EventBus:
         queues = self._queues.get(agent_id, [])
         if queue in queues:
             queues.remove(queue)
+        # 清理空列表，防止内存泄漏
+        if not queues and agent_id in self._queues:
+            del self._queues[agent_id]
 
     def emit(self, agent_id: str, event: dict[str, Any]) -> None:
         for queue in self._queues.get(agent_id, []):
             try:
                 queue.put_nowait(event)
             except asyncio.QueueFull:
-                pass
+                # 队列满时丢弃旧事件，防止阻塞
+                try:
+                    queue.get_nowait()
+                    queue.put_nowait(event)
+                except:
+                    pass
 
 
 event_bus = EventBus()
@@ -266,8 +275,7 @@ class AgentManager:
             agent_id = agent["id"]
             ensure_agent_workspace(agent_id)
             agent_dir = str(resolve_agent_dir(agent_id))
-            self.memory_indexers[agent_id] = MemoryIndexer(agent_dir)
-            self.memory_indexers[agent_id].rebuild_index()
+            self.memory_indexers[agent_id] = MemoryIndexer(agent_id, agent_dir)
             engine = MemorySearchEngine(agent_dir, agent_id)
             engine.rebuild_index()
             engine.start_watching()
@@ -934,13 +942,13 @@ class AgentManager:
     async def _handle_reset(
         self, session_id: str, agent_id: str, user_id: str = "default", model_override: str | None = None,
     ) -> AsyncGenerator[dict[str, Any], None]:
-        """/new：保存 session-memory 后重置会话"""
-        yield {"type": "command_response", "response": "正在重置会话（写入长期记忆，可能需要数秒）..."}
+        """/new：保存 session-memory 后创建新会话"""
+        yield {"type": "command_response", "response": "正在创建新会话（写入长期记忆，可能需要数秒）..."}
 
         data = session_manager.load_session(session_id, agent_id, user_id)
         messages = data.get("messages", []) if data else []
 
-        # /new 快速路径：不在前台阻塞等待记忆保存，先重置会话再后台异步归档。
+        # /new 快速路径：不在前台阻塞等待记忆保存，先创建新会话再后台异步保存记忆。
         mem_result: dict[str, Any] = {"saved": False, "reason": "消息过少"}
         if len(messages) >= 2:
             snapshot = [
@@ -956,13 +964,15 @@ class AgentManager:
                     agent_id=agent_id,
                     source_session_id=session_id,
                     messages_snapshot=snapshot,
+                    user_id=user_id,
                 )
             )
             self._pending_tasks.add(task)
             task.add_done_callback(self._pending_tasks.discard)
             mem_result = {"saved": False, "queued": True, "reason": "后台保存中"}
 
-        session_manager.reset_session(session_id, agent_id, user_id)
+        # 创建新的 session
+        new_session_id = session_manager.create_session(agent_id, title="新会话", user_id=user_id)
 
         state = self.get_state(agent_id)
         state.compaction_count = 0
@@ -977,16 +987,17 @@ class AgentManager:
 
         audit_logger.log(
             agent_id,
-            "session_reset",
+            "session_new",
             {
-                "session_id": session_id,
+                "old_session_id": session_id,
+                "new_session_id": new_session_id,
                 "memory_saved": mem_result.get("saved", False),
                 "model_override": model_override,
                 "mode": "with_memory",
             },
         )
 
-        msg = "会话已重置。"
+        msg = "已创建新会话。"
         if mem_result.get("queued"):
             msg += " 长期记忆将在后台保存。"
         elif mem_result.get("saved"):
@@ -994,35 +1005,38 @@ class AgentManager:
         msg += model_msg
 
         yield {"type": "command_response", "response": msg}
-        yield {"type": "session_reset", "session_id": session_id, "memory": mem_result}
+        yield {"type": "session_new", "old_session_id": session_id, "new_session_id": new_session_id, "memory": mem_result}
         # 不 yield done：主流程会接着用 BARE_SESSION_RESET_PROMPT 跑问候，由 agent 流产出 done
 
     async def _handle_reset_noflush(
         self, session_id: str, agent_id: str, user_id: str = "default",
     ) -> AsyncGenerator[dict[str, Any], None]:
-        """/reset：不写入 session-memory 的轻量重置，仅归档会话文件。"""
-        yield {"type": "command_response", "response": "正在重置会话（不写入长期记忆）..."}
+        """/reset：不写入 session-memory，直接创建新会话"""
+        yield {"type": "command_response", "response": "正在创建新会话（不写入长期记忆）..."}
 
-        session_manager.reset_session(session_id, agent_id, user_id)
+        # 创建新的 session
+        new_session_id = session_manager.create_session(agent_id, title="新会话", user_id=user_id)
 
         state = self.get_state(agent_id)
         state.compaction_count = 0
 
         audit_logger.log(
             agent_id,
-            "session_reset",
+            "session_new",
             {
-                "session_id": session_id,
+                "old_session_id": session_id,
+                "new_session_id": new_session_id,
                 "memory_saved": False,
                 "mode": "no_memory",
             },
         )
 
-        msg = "会话已重置（本轮对话未写入长期记忆）。"
+        msg = "已创建新会话（本轮对话未写入长期记忆）。"
         yield {"type": "command_response", "response": msg}
         yield {
-            "type": "session_reset",
-            "session_id": session_id,
+            "type": "session_new",
+            "old_session_id": session_id,
+            "new_session_id": new_session_id,
             "memory": {"saved": False, "reason": "no-flush"},
         }
         # 不 yield done：主流程会接着用 BARE_SESSION_RESET_PROMPT 跑问候，由 agent 流产出 done
@@ -1223,6 +1237,7 @@ class AgentManager:
             agent_id=agent_id,
             source_session_id=session_id,
             messages=messages,
+            user_id=user_id,
         )
 
     async def _save_session_memory_background(
@@ -1230,6 +1245,7 @@ class AgentManager:
         agent_id: str,
         source_session_id: str,
         messages_snapshot: list[dict[str, Any]],
+        user_id: str = "default",
     ) -> None:
         """后台异步保存 session-memory，避免阻塞 /new 主链路。"""
         try:
@@ -1237,6 +1253,7 @@ class AgentManager:
                 agent_id=agent_id,
                 source_session_id=source_session_id,
                 messages=messages_snapshot,
+                user_id=user_id,
             )
             if result.get("saved"):
                 event_bus.emit(agent_id, {
@@ -1265,6 +1282,7 @@ class AgentManager:
         agent_id: str,
         source_session_id: str,
         messages: list[dict[str, Any]],
+        user_id: str = "default",
     ) -> dict[str, Any]:
         try:
             llm = self.get_llm(agent_id)
@@ -1307,7 +1325,7 @@ class AgentManager:
 
         today = datetime.now().strftime("%Y-%m-%d")
         filename = f"{today}-{slug}.md"
-        memory_dir = resolve_agent_memory_dir(agent_id)
+        memory_dir = resolve_agent_memory_dir(agent_id, user_id)
         memory_dir.mkdir(parents=True, exist_ok=True)
         filepath = memory_dir / filename
 
@@ -1512,8 +1530,7 @@ class AgentManager:
 
         ensure_agent_workspace(agent_id)
         agent_dir = str(resolve_agent_dir(agent_id))
-        self.memory_indexers[agent_id] = MemoryIndexer(agent_dir)
-        self.memory_indexers[agent_id].rebuild_index()
+        self.memory_indexers[agent_id] = MemoryIndexer(agent_id, agent_dir)
         engine = MemorySearchEngine(agent_dir, agent_id)
         engine.rebuild_index()
         engine.start_watching()
