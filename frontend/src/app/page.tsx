@@ -45,8 +45,10 @@ function HomeContent() {
       return;
     }
     setUserId(userId);
+    // URL 参数优先于 localStorage
     if (agentId) {
       setCurrentAgentId(agentId);
+      try { window.localStorage.setItem("netclaw.agent", agentId); } catch {}
     }
     if (sessionId) {
       setCurrentSessionId(sessionId);

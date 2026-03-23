@@ -170,8 +170,19 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, [userId]);
 
   // 持久化 currentAgentId（Hydration 安全：初始 "main"，useEffect 恢复）
+  // 注意：如果 URL 中有 agent_id 参数，不恢复 localStorage 的值（由 page.tsx 处理）
   useEffect(() => {
     if (typeof window === "undefined") return;
+    // 检查 URL 中是否有 agent_id 参数
+    const urlParams = new URLSearchParams(window.location.search);
+    const urlAgentId = urlParams.get("agent_id");
+    if (urlAgentId) {
+      // URL 参数优先，直接设置并更新 localStorage
+      setCurrentAgentId(urlAgentId);
+      try { window.localStorage.setItem("netclaw.agent", urlAgentId); } catch {}
+      return;
+    }
+    // 没有 URL 参数时，从 localStorage 恢复
     try {
       const saved = window.localStorage.getItem("netclaw.agent");
       if (saved && typeof saved === "string" && saved.trim()) {
@@ -298,9 +309,20 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const loadAgents = useCallback(async () => {
     const data = await api.fetchAgents();
     setAgents(data);
-  }, []);
+    // 验证 currentAgentId 是否在 agents 列表中
+    if (data.length > 0 && !data.some((a: any) => a.id === currentAgentId)) {
+      // 当前 agent 不存在，重置为 "main" 或列表中的第一个
+      const fallbackId = data.some((a: any) => a.id === "main") ? "main" : data[0].id;
+      setCurrentAgentId(fallbackId);
+    }
+  }, [currentAgentId]);
 
   const loadSession = useCallback(async () => {
+    // 如果正在流式传输中，跳过消息加载，避免覆盖本地刚添加的消息
+    // 这在首次创建 session 时尤其重要：用户消息先添加到本地，session 创建后会触发此函数
+    if (chat.isStreaming) {
+      return;
+    }
     // 如果有 session_id，加载对应会话的消息
     if (currentSessionId) {
       try {

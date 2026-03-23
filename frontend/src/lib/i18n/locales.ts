@@ -12,6 +12,7 @@ export interface Messages {
   refresh: string;
   search: string;
   loading: string;
+  copy: string;
 
   // Inspector tabs
   tabFiles: string;
@@ -190,6 +191,7 @@ export interface Messages {
   confirmKillOne: string;
   noReply: string;
   parsingTools: string;
+  memoryRetrieval: string;
 
   // Heartbeat
   heartbeatAndCron: string;
@@ -243,6 +245,7 @@ export const zhCN: Messages = {
   refresh: "刷新",
   search: "搜索",
   loading: "加载中...",
+  copy: "复制",
 
   tabFiles: "文件",
   tabTools: "工具",
@@ -409,6 +412,7 @@ export const zhCN: Messages = {
   confirmKillOne: "确认终止子Agent {id}？",
   noReply: "暂无回复",
   parsingTools: "正在解析工具调用...",
+  memoryRetrieval: "记忆检索 ({count} 条)",
 
   heartbeatAndCron: "心跳与定时",
   heartbeatLabel: "心跳",
@@ -458,6 +462,7 @@ export const enUS: Messages = {
   refresh: "Refresh",
   search: "Search",
   loading: "Loading...",
+  copy: "Copy",
 
   tabFiles: "Files",
   tabTools: "Tools",
@@ -624,6 +629,7 @@ export const enUS: Messages = {
   confirmKillOne: "Confirm kill subagent {id}?",
   noReply: "No reply yet",
   parsingTools: "Parsing tool calls...",
+  memoryRetrieval: "Memory Retrieval ({count} items)",
 
   heartbeatAndCron: "Heartbeat & Cron",
   heartbeatLabel: "Heartbeat",

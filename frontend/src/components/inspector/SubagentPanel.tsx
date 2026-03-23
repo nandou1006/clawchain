@@ -27,7 +27,7 @@ interface LiveTraceEntry {
 }
 
 export default function SubagentPanel() {
-  const { currentAgentId, loadMainSession, showNotice, t } = useApp();
+  const { currentAgentId, loadSession, showNotice, t } = useApp();
   const [tree, setTree] = useState<SubagentTreeItem[]>([]);
   const [traceMap, setTraceMap] = useState<Record<string, LiveTraceEntry[]>>({});
   const [loading, setLoading] = useState(false);
@@ -52,8 +52,8 @@ export default function SubagentPanel() {
       setTree(data.tree || []);
 
       const justCompleted = [...prevRunning].filter((id) => !runningIds.has(id));
-      if (justCompleted.length > 0 && loadMainSession) {
-        loadMainSession();
+      if (justCompleted.length > 0 && loadSession) {
+        loadSession();
       }
     } catch {
       setTree([]);
@@ -130,7 +130,7 @@ export default function SubagentPanel() {
       if (refreshTimerRef.current) window.clearTimeout(refreshTimerRef.current);
       unsubscribe();
     };
-  }, [currentAgentId, loadMainSession]);
+  }, [currentAgentId, loadSession]);
 
   const toggleExpand = (runId: string) => {
     setExpanded((prev) => {
@@ -171,7 +171,7 @@ export default function SubagentPanel() {
                   showNotice({ kind: "error", text: res?.error || "终止失败" });
                 }
                 await fetchData();
-                await loadMainSession();
+                await loadSession();
               } finally {
                 setKillAllBusy(false);
               }
@@ -223,7 +223,7 @@ function SubagentTreeNode({
   lastSteerPrompt: string;
   setLastSteerPrompt: (v: string) => void;
 }) {
-  const { currentAgentId, loadMainSession, t } = useApp();
+  const { currentAgentId, loadSession, t } = useApp();
   const status = node.state || node.status;
   const isRunning = status === "running";
   const isExpanded = expanded.has(node.run_id);
@@ -285,7 +285,7 @@ function SubagentTreeNode({
                       onNotice({ kind: "error", text: res?.error || "终止失败" });
                     }
                     await onRefresh();
-                    await loadMainSession();
+                    await loadSession();
                   } finally {
                     setBusy(false);
                   }
@@ -355,7 +355,7 @@ function SubagentTreeNode({
                             onNotice({ kind: "error", text: res?.error || "引导失败" });
                           }
                           await onRefresh();
-                          await loadMainSession();
+                          await loadSession();
                         } finally {
                           setBusy(false);
                         }

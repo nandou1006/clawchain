@@ -901,5 +901,10 @@ class SessionManager:
         sessions = self.list_sessions(agent_id, user_id)
         return sessions[0]["session_id"] if sessions else None
 
+    def resolve_main_session_id(self, agent_id: str, user_id: str = "default") -> str:
+        """兼容方法：返回最近活跃会话 ID 或空字符串（已取消 main session 概念）"""
+        sid = self.get_active_session_id(agent_id, user_id)
+        return sid or ""
+
 
 session_manager = SessionManager()

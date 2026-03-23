@@ -39,6 +39,7 @@ export interface SSEEvent {
   output?: string;
   error?: string;
   session_id?: string;
+  new_session_id?: string;
   title?: string;
   query?: string;
   results?: any[];
@@ -482,6 +483,10 @@ export interface ToolItem {
 
 export async function fetchTools(agentId: string): Promise<ToolItem[]> {
   const resp = await fetch(`${API_BASE}/agents/${agentId}/tools`);
+  if (!resp.ok) {
+    const data = await resp.json().catch(() => ({}));
+    throw new Error(data?.detail || `Failed to fetch tools: ${resp.status}`);
+  }
   return resp.json();
 }
 

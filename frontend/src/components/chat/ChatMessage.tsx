@@ -218,14 +218,14 @@ export default function ChatMessage({ message, hideAvatar, isLast }: Props) {
 
         {isEmpty && (
           <div className="text-xs italic py-1" style={{ color: "var(--text-tertiary)" }}>
-            ({t.noReplyYet})
+            ({t.noReply})
           </div>
         )}
 
         {isTextToolCall && !hasToolCalls && (
           <div className="flex items-center gap-1.5 text-xs py-1" style={{ color: "var(--text-secondary)" }}>
             <Loader2 className="w-3 h-3 animate-spin" />
-            <span>{t.parsingToolCalls}</span>
+            <span>{t.parsingTools}</span>
           </div>
         )}
 

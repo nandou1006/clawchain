@@ -5,14 +5,12 @@ import { useApp } from "@/lib/store";
 import { FileText, Save, FolderOpen, Sparkles, Users, Wrench, Heart, ChevronRight, RefreshCw, PanelRightClose, ListTodo, ToggleLeft, ToggleRight } from "lucide-react";
 import * as api from "@/lib/api";
 import type { Messages } from "@/lib/i18n/locales";
-import dynamic from "next/dynamic";
+import CodeMirrorEditor from "@/components/editor/CodeMirrorEditor";
 import SubagentPanel from "@/components/inspector/SubagentPanel";
 import HeartbeatPanel from "@/components/inspector/HeartbeatPanel";
 import EventTimeline from "@/components/inspector/EventTimeline";
 import TaskDashboard from "@/components/inspector/TaskDashboard";
 import SkillsPanel from "@/components/skills/SkillsPanel";
-
-const MonacoEditor = dynamic(() => import("@monaco-editor/react"), { ssr: false });
 
 const WORKSPACE_FILES = [
   { path: "workspace/SOUL.md", label: "SOUL.md" },
@@ -230,26 +228,14 @@ function FilesTab({
               )}
             </div>
             <div className="flex-1 min-h-0">
-              <MonacoEditor
+              <CodeMirrorEditor
                 height="100%"
                 language="markdown"
-                theme={effectiveTheme === "dark" ? "vs-dark" : "vs"}
+                theme={effectiveTheme}
                 value={editedContent}
-                onChange={(val: string | undefined) => {
+                onChange={(val: string) => {
                   setEditedContent(val || "");
                   setHasChanges(true);
-                }}
-                loading={<div className="flex items-center justify-center h-full text-[var(--text-secondary)] text-xs">加载编辑器...</div>}
-                options={{
-                  minimap: { enabled: false },
-                  fontSize: 12,
-                  lineNumbers: "on",
-                  wordWrap: "on",
-                  scrollBeyondLastLine: false,
-                  padding: { top: 8 },
-                  automaticLayout: true,
-                  overviewRulerBorder: false,
-                  scrollbar: { verticalScrollbarSize: 6, horizontalScrollbarSize: 6 },
                 }}
               />
             </div>

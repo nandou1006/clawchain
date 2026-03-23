@@ -10,9 +10,7 @@ import {
   Shield, Bell, Cpu, Globe, FolderArchive, Puzzle,
 } from "lucide-react";
 import * as api from "@/lib/api";
-import dynamic from "next/dynamic";
-
-const MonacoEditor = dynamic(() => import("@monaco-editor/react"), { ssr: false });
+import CodeMirrorEditor from "@/components/editor/CodeMirrorEditor";
 
 /* ───────────────────── Form Primitives ───────────────────── */
 
@@ -368,7 +366,7 @@ function AgentCard({ agent, models, config, currentAgentId, onConfigChange, onDe
 /* ───────────────────── Main ConfigModal ───────────────────── */
 
 export default function ConfigModal() {
-  const { currentAgentId, currentModel, loadMainSession, loadAgents, switchAgent, showConfigModal, setShowConfigModal, effectiveTheme, showNotice, locale, setLocale, t } = useApp();
+  const { currentAgentId, currentModel, loadSession, loadAgents, switchAgent, showConfigModal, setShowConfigModal, effectiveTheme, showNotice, locale, setLocale, t } = useApp();
   const [config, setConfig] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -499,7 +497,7 @@ export default function ConfigModal() {
       } catch {
         setRawJson(JSON.stringify(result.config, null, 2));
       }
-      loadModels(); loadMainSession();
+      loadModels(); loadSession();
     } catch (e: any) { setRawError(e.message || "JSON 解析失败"); }
     finally { setSaving(false); }
   };
@@ -582,12 +580,12 @@ export default function ConfigModal() {
               </div>
               {rawError && <div className="mx-4 text-xs px-2.5 py-1.5 rounded-lg" style={{ color: "var(--error)", background: "var(--error-bg)" }}>{rawError}</div>}
               <div className="flex-1 min-h-0 mx-4 mb-2 rounded-lg overflow-hidden" style={{ border: "1px solid var(--border)" }}>
-                <MonacoEditor
-                  height="100%" language="json"
-                  theme={effectiveTheme === "dark" ? "vs-dark" : "vs"}
+                <CodeMirrorEditor
+                  height="100%"
+                  language="json"
+                  theme={effectiveTheme}
                   value={rawJson}
                   onChange={(v) => { setRawJson(v || ""); setRawError(null); }}
-                  options={{ minimap: { enabled: false }, fontSize: 12, lineNumbers: "on", wordWrap: "on", scrollBeyondLastLine: false, automaticLayout: true }}
                 />
               </div>
               <div className="px-4 pb-3 flex justify-end">
@@ -641,7 +639,7 @@ export default function ConfigModal() {
                   <select value={defaults.model || ""}
                     onChange={async (e) => {
                       const ref = e.target.value;
-                      try { await api.switchModel(currentAgentId, ref, "default"); await loadMainSession(); loadConfig(); }
+                      try { await api.switchModel(currentAgentId, ref, "default"); await loadSession(); loadConfig(); }
                       catch (err: any) { showNotice({ kind: "error", text: `切换失败: ${err.message}` }); }
                     }}
                     disabled={models.length === 0} className="input text-xs">
