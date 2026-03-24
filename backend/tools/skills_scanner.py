@@ -84,6 +84,24 @@ def _resolve_agent_skills_allowlist(agent_id: str) -> set[str] | None:
     return set(s.strip() for s in raw if isinstance(s, str) and s.strip())
 
 
+def _resolve_agent_skills_enabled_config(agent_id: str) -> dict[str, bool]:
+    """解析 Agent 的 agentSkills 配置（enabled 开关）
+
+    Returns:
+        {"skill_name": True/False}
+    """
+    from config import get_config
+    cfg = get_config()
+    agents_list = cfg.get("agents", {}).get("list", [])
+
+    for agent in agents_list:
+        if agent.get("id") == agent_id:
+            raw_skills = agent.get("agentSkills") or {}
+            return {k: v.get("enabled", True) for k, v in raw_skills.items() if isinstance(v, dict)}
+
+    return {}
+
+
 def sync_global_skills_to_workspace(agent_id: str) -> None:
     """将 data/skills/* 完整同步到 workspace/skills/（含 SKILL.md、scripts/ 等所有文件），使 exec 的 cwd 内可访问"""
     global_dir = resolve_global_skills_dir()
@@ -114,12 +132,23 @@ def sync_global_skills_to_workspace(agent_id: str) -> None:
 
 
 def scan_skills_for_agent(agent_id: str) -> list[dict[str, str]]:
-    """扫描指定 Agent 的技能（私有 + 全局共享），并标记 enabled 状态（按 agents.list[].skills）"""
+    """扫描指定 Agent 的技能（私有 + 全局共享），并标记 enabled 状态
+
+    enabled 判断逻辑:
+    1. 先检查 agentSkills[name].enabled 配置
+    2. 若未配置，再检查 skills allowlist
+    3. 都未配置则默认启用
+    """
     skills: list[dict[str, str]] = []
     seen_names: set[str] = set()
     allowlist = _resolve_agent_skills_allowlist(agent_id)
+    enabled_config = _resolve_agent_skills_enabled_config(agent_id)
 
     def _is_enabled(name: str) -> bool:
+        # 优先检查 agentSkills 配置
+        if name in enabled_config:
+            return enabled_config[name]
+        # 再检查 skills allowlist
         if allowlist is None:
             return True
         return name in allowlist
@@ -189,8 +218,13 @@ def scan_skills_detailed(agent_id: str) -> list[dict[str, Any]]:
     skills: list[dict[str, Any]] = []
     seen_names: set[str] = set()
     allowlist = _resolve_agent_skills_allowlist(agent_id)
+    enabled_config = _resolve_agent_skills_enabled_config(agent_id)
 
     def _is_enabled(name: str) -> bool:
+        # 优先检查 agentSkills 配置
+        if name in enabled_config:
+            return enabled_config[name]
+        # 再检查 skills allowlist
         if allowlist is None:
             return True
         return name in allowlist
@@ -262,3 +296,37 @@ def scan_all_skills() -> None:
     """为所有已配置的 Agent 生成技能快照"""
     for agent in list_agents():
         write_skills_snapshot(agent["id"])
+
+
+def set_agent_skill_enabled(agent_id: str, skill_name: str, enabled: bool) -> bool:
+    """设置技能的 enabled 状态
+
+    Returns:
+        True if success, False if skill not found
+    """
+    from config import get_raw_config, save_config
+
+    # 先检查技能是否存在
+    all_skills = scan_skills_for_agent(agent_id)
+    skill_names = {s["name"] for s in all_skills}
+    if skill_name not in skill_names:
+        return False
+
+    # 更新配置
+    cfg = get_raw_config()
+    agents_list = cfg.setdefault("agents", {}).setdefault("list", [])
+
+    agent_entry = None
+    for agent in agents_list:
+        if agent.get("id") == agent_id:
+            agent_entry = agent
+            break
+
+    if not agent_entry:
+        return False
+
+    agent_skills = agent_entry.setdefault("agentSkills", {})
+    agent_skills[skill_name] = {"enabled": enabled}
+
+    save_config(cfg)
+    return True

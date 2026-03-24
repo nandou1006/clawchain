@@ -706,3 +706,67 @@ export async function updateSkillEnabled(agentId: string, skillName: string, ena
   if (!resp.ok) throw new Error(`Update failed: ${resp.status}`);
   return resp.json();
 }
+
+// ---------------------------------------------------------------------------
+// Agent Tools & Skills API
+// ---------------------------------------------------------------------------
+
+export interface AgentToolItem {
+  id: string;
+  name: string;
+  description: string;
+  category: string;
+  file: string;
+  enabled: boolean;
+}
+
+export interface AgentSkillItem {
+  name: string;
+  description: string;
+  location: string;
+  enabled: boolean;
+}
+
+export async function fetchAgentTools(agentId: string): Promise<{ agent_id: string; tools: AgentToolItem[] }> {
+  const resp = await fetch(`${API_BASE}/agents/${agentId}/agent-tools`);
+  if (!resp.ok) {
+    const data = await resp.json().catch(() => ({}));
+    throw new Error(data?.detail || `Failed to fetch agent tools: ${resp.status}`);
+  }
+  return resp.json();
+}
+
+export async function toggleAgentTool(agentId: string, toolId: string, enabled: boolean): Promise<{ status: string; tool_id: string; enabled: boolean }> {
+  const resp = await fetch(`${API_BASE}/agents/${agentId}/agent-tools/${encodeURIComponent(toolId)}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ enabled }),
+  });
+  if (!resp.ok) {
+    const data = await resp.json().catch(() => ({}));
+    throw new Error(data?.detail || `Toggle failed: ${resp.status}`);
+  }
+  return resp.json();
+}
+
+export async function fetchAgentSkills(agentId: string): Promise<{ agent_id: string; skills: AgentSkillItem[] }> {
+  const resp = await fetch(`${API_BASE}/agents/${agentId}/agent-skills`);
+  if (!resp.ok) {
+    const data = await resp.json().catch(() => ({}));
+    throw new Error(data?.detail || `Failed to fetch agent skills: ${resp.status}`);
+  }
+  return resp.json();
+}
+
+export async function toggleAgentSkill(agentId: string, skillName: string, enabled: boolean): Promise<{ status: string; skill_name: string; enabled: boolean }> {
+  const resp = await fetch(`${API_BASE}/agents/${agentId}/agent-skills/${encodeURIComponent(skillName)}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ enabled }),
+  });
+  if (!resp.ok) {
+    const data = await resp.json().catch(() => ({}));
+    throw new Error(data?.detail || `Toggle failed: ${resp.status}`);
+  }
+  return resp.json();
+}

@@ -291,8 +291,18 @@ function AgentCard({ agent, models, config, currentAgentId, onConfigChange, onDe
   const { t } = useApp();
   const [expanded, setExpanded] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
+  const [agentTools, setAgentTools] = useState<api.AgentToolItem[]>([]);
+  const [agentSkills, setAgentSkills] = useState<api.AgentSkillItem[]>([]);
   const agentsList: any[] = config.agents?.list || [];
   const idx = agentsList.findIndex((a: any) => a.id === agent.id);
+
+  // 加载专属工具和技能
+  useEffect(() => {
+    if (expanded && agent.id) {
+      api.fetchAgentTools(agent.id).then(data => setAgentTools(data.tools || [])).catch(() => setAgentTools([]));
+      api.fetchAgentSkills(agent.id).then(data => setAgentSkills(data.skills || [])).catch(() => setAgentSkills([]));
+    }
+  }, [expanded, agent.id]);
 
   const updateAgent = async (field: string, value: any) => {
     const list = JSON.parse(JSON.stringify(agentsList));
@@ -309,6 +319,20 @@ function AgentCard({ agent, models, config, currentAgentId, onConfigChange, onDe
       const result = await api.replaceConfig({ ...config, agents: { ...config.agents, list } });
       onConfigChange(result.config);
     } catch (e: any) { onError?.(`${t.configUpdateFailed}: ${e?.message || "未知错误"}`); }
+  };
+
+  const handleToggleTool = async (toolId: string, enabled: boolean) => {
+    try {
+      await api.toggleAgentTool(agent.id, toolId, enabled);
+      setAgentTools(prev => prev.map(t => t.id === toolId ? { ...t, enabled } : t));
+    } catch (e: any) { onError?.(`切换工具失败: ${e?.message}`); }
+  };
+
+  const handleToggleSkill = async (skillName: string, enabled: boolean) => {
+    try {
+      await api.toggleAgentSkill(agent.id, skillName, enabled);
+      setAgentSkills(prev => prev.map(s => s.name === skillName ? { ...s, enabled } : s));
+    } catch (e: any) { onError?.(`切换技能失败: ${e?.message}`); }
   };
 
   return (
@@ -357,6 +381,50 @@ function AgentCard({ agent, models, config, currentAgentId, onConfigChange, onDe
           <Input label={t.toolsDeny} value={(agent.tools?.deny || []).join(", ")}
             onChange={(v) => { const arr = v.split(",").map((s: string) => s.trim()).filter(Boolean); updateAgent("tools", { ...(agent.tools || {}), deny: arr.length ? arr : undefined }); }}
             placeholder={t.inheritDefault} hint={t.commaSeparatedPreferAllow} />
+
+          {/* 专属工具 */}
+          {agentTools.length > 0 && (
+            <div className="pt-2" style={{ borderTop: "1px solid var(--border)" }}>
+              <div className="text-[10px] font-semibold uppercase mb-1.5" style={{ color: "var(--text-secondary)" }}>专属工具</div>
+              <div className="space-y-1">
+                {agentTools.map(tool => (
+                  <div key={tool.id} className="flex items-center justify-between px-2 py-1.5 rounded-lg" style={{ background: "var(--hover)" }}>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-[11px] font-medium truncate" style={{ color: "var(--text)" }}>{tool.name}</div>
+                      <div className="text-[9px] truncate" style={{ color: "var(--text-secondary)" }}>{tool.description || tool.id}</div>
+                    </div>
+                    <button onClick={() => handleToggleTool(tool.id, !tool.enabled)} className="transition-colors ml-2" type="button">
+                      {tool.enabled
+                        ? <ToggleRight className="w-5 h-5" style={{ color: "var(--accent)" }} />
+                        : <ToggleLeft className="w-5 h-5" style={{ color: "var(--text-tertiary)" }} />}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* 专属技能 */}
+          {agentSkills.length > 0 && (
+            <div className="pt-2" style={{ borderTop: "1px solid var(--border)" }}>
+              <div className="text-[10px] font-semibold uppercase mb-1.5" style={{ color: "var(--text-secondary)" }}>专属技能</div>
+              <div className="space-y-1">
+                {agentSkills.map(skill => (
+                  <div key={skill.name} className="flex items-center justify-between px-2 py-1.5 rounded-lg" style={{ background: "var(--hover)" }}>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-[11px] font-medium truncate" style={{ color: "var(--text)" }}>{skill.name}</div>
+                      <div className="text-[9px] truncate" style={{ color: "var(--text-secondary)" }}>{skill.description || skill.location}</div>
+                    </div>
+                    <button onClick={() => handleToggleSkill(skill.name, !skill.enabled)} className="transition-colors ml-2" type="button">
+                      {skill.enabled
+                        ? <ToggleRight className="w-5 h-5" style={{ color: "var(--accent)" }} />
+                        : <ToggleLeft className="w-5 h-5" style={{ color: "var(--text-tertiary)" }} />}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

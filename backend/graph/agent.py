@@ -396,6 +396,10 @@ class AgentManager:
         tools.extend(get_cron_tools(agent_id))
         tools.extend(get_status_tools(agent_id, session_id))
 
+        # 加载 Agent 专属工具
+        from tools.agent_tools_scanner import get_agent_custom_tools
+        tools.extend(get_agent_custom_tools(agent_id))
+
         tools = self._filter_tools_by_policy(agent_id, tools)
         return tools
 

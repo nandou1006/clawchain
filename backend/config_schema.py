@@ -161,6 +161,20 @@ class ToolsPolicyConfig(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Agent Tools & Skills (专属工具和技能配置)
+# ---------------------------------------------------------------------------
+
+class AgentToolConfig(BaseModel):
+    """Agent 专属工具配置 - 仅存储开关状态，工具定义从文件扫描"""
+    enabled: bool = True
+
+
+class AgentSkillEntry(BaseModel):
+    """Agent 专属技能配置 - 仅存储开关状态，技能定义从 SKILL.md 扫描"""
+    enabled: bool = True
+
+
+# ---------------------------------------------------------------------------
 # Agent Defaults
 # ---------------------------------------------------------------------------
 
@@ -201,6 +215,8 @@ class AgentEntryConfig(BaseModel):
     subagents: Optional[SubagentsConfig] = None
     heartbeat: Optional[HeartbeatConfig] = None
     tools: Optional[ToolsPolicyConfig] = None
+    agentTools: Optional[Dict[str, AgentToolConfig]] = None
+    agentSkills: Optional[Dict[str, AgentSkillEntry]] = None
 
     model_config = {"extra": "allow"}
 

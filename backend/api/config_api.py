@@ -370,3 +370,51 @@ def _reload_subsystems(updates: dict[str, Any]) -> None:
             heartbeat_runner.update_config()
         except Exception:
             pass
+
+
+# ---------------------------------------------------------------------------
+# Agent Tools & Skills API
+# ---------------------------------------------------------------------------
+
+class ToolToggleRequest(BaseModel):
+    enabled: bool
+
+
+class SkillToggleRequest(BaseModel):
+    enabled: bool
+
+
+@router.get("/agents/{agent_id}/agent-tools")
+async def list_agent_tools(agent_id: str):
+    """返回 Agent 的专属工具列表（含 enabled 状态）"""
+    from tools.agent_tools_scanner import scan_agent_tools_with_status
+    tools = scan_agent_tools_with_status(agent_id)
+    return {"agent_id": agent_id, "tools": tools}
+
+
+@router.put("/agents/{agent_id}/agent-tools/{tool_id}")
+async def toggle_agent_tool(agent_id: str, tool_id: str, req: ToolToggleRequest):
+    """切换专属工具的 enabled 状态"""
+    from tools.agent_tools_scanner import set_agent_tool_enabled
+    success = set_agent_tool_enabled(agent_id, tool_id, req.enabled)
+    if not success:
+        raise HTTPException(404, f"Tool '{tool_id}' not found for agent '{agent_id}'")
+    return {"status": "ok", "tool_id": tool_id, "enabled": req.enabled}
+
+
+@router.get("/agents/{agent_id}/agent-skills")
+async def list_agent_skills(agent_id: str):
+    """返回 Agent 的专属技能列表（含 enabled 状态）"""
+    from tools.skills_scanner import scan_skills_for_agent
+    skills = scan_skills_for_agent(agent_id)
+    return {"agent_id": agent_id, "skills": skills}
+
+
+@router.put("/agents/{agent_id}/agent-skills/{skill_name}")
+async def toggle_agent_skill(agent_id: str, skill_name: str, req: SkillToggleRequest):
+    """切换专属技能的 enabled 状态"""
+    from tools.skills_scanner import set_agent_skill_enabled
+    success = set_agent_skill_enabled(agent_id, skill_name, req.enabled)
+    if not success:
+        raise HTTPException(404, f"Skill '{skill_name}' not found for agent '{agent_id}'")
+    return {"status": "ok", "skill_name": skill_name, "enabled": req.enabled}
